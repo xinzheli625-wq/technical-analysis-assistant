@@ -18,6 +18,7 @@
 | **交易模拟** | 生成交易计划（仓位 / 动态止损 / 目标 / R:R 评估） |
 | **自动验证** | 3-5 天后自动验证预测，Skill 级归因，权重自动调整 |
 | **风险收益比** | 自动计算并评级（A/B/C/D），不合格时明确拒绝 |
+| **飞书文档同步** | 分析结果、跟踪记录自动写入飞书文档 |
 | **多输入支持** | 股票代码、CSV/Excel、K 线截图 |
 
 ---
@@ -100,6 +101,58 @@ print(RuleIndex().get_stats())
 
 ---
 
+## 飞书文档同步
+
+系统支持将分析结果、跟踪记录、验证结果自动同步到飞书文档。
+
+### 前置条件
+
+1. 安装飞书命令行工具 [lark-cli](https://open.larksuite.com/document/tools-and-resources/cli/overview) 并登录：
+
+   ```bash
+   lark-cli auth login
+   ```
+
+2. 首次运行时会自动在飞书云盘中创建文件夹 `技术分析助手`，并为每只股票创建独立分析文档。
+
+### 启用同步
+
+```python
+from api import assistant
+
+a = assistant()
+a.enable_feishu()  # 启用飞书同步
+
+# 分析后会自动同步到飞书
+result = a.analyze('AAPL', days=100, market='us')
+```
+
+### 手动同步已有分析
+
+```python
+# 重新同步某只股票的分析到飞书
+a._sync_to_feishu('AAPL', result)
+
+# 同步跟踪更新
+a.track('AAPL', market='us', days=100)
+```
+
+### 查看已同步文档
+
+```python
+from utils.feishu_integration import FeishuIntegration
+
+feishu = FeishuIntegration()
+print(feishu.list_stock_docs())
+print(f"汇总文档: {feishu.get_records_doc_url()}")
+```
+
+### 缓存说明
+
+飞书文件夹、文档 token 会缓存到 `data/feishu_cache.json`，避免重复创建。该文件已加入 `.gitignore`，不会提交到仓库。
+
+---
+
 ## 标准操作流程（SOP）
 
 每次分析严格遵循以下 8 步流水线：
@@ -147,6 +200,7 @@ Step 8: 模拟开仓（simulate=True 时）
 │   ├── evolution_engine.py         # Skill 进化引擎
 │   ├── tracking_module.py          # 每日跟踪
 │   ├── data_source.py              # 统一数据下载接口
+│   ├── feishu_integration.py       # 飞书文档同步
 │   └── tech_calculator/            # 各维度指标计算模块
 ├── data/
 │   ├── skill_rules.jsonl           # Skill 规则库（核心资产）
@@ -238,9 +292,8 @@ mypy utils
 3. 将 `skill_knowledge.py` 中的超长 prompt 拆成独立模板文件。
 4. 引入配置系统，支持热加载。
 5. 引入 logging 替代 print。
-6. 飞书集成从 `lark-cli` subprocess 迁移到 Lark OpenAPI。
-
-欢迎提交 Issue 和 PR。
+6. 飞书集成：当前基于 `lark-cli` subprocess，后续可迁移到 Lark OpenAPI 以获得更稳定的错误处理。
+7. 补充端到端集成测试（含真实数据源与 LLM 的 mock）。
 
 ---
 

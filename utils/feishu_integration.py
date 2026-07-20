@@ -351,7 +351,7 @@ class FeishuIntegration:
         # 从URL提取token
         token = doc_url_or_token
         if 'feishu.cn' in doc_url_or_token or 'larksuite.com' in doc_url_or_token:
-            match = re.search(r'/(docx?|wiki)/([a-zA-Z0-9]+)', doc_url_or_token)
+            match = re.search(r'/(docx?|wiki)/([a-zA-Z0-9_]+)', doc_url_or_token)
             if match:
                 token = match.group(2)
 
