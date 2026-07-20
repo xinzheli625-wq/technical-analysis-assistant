@@ -113,7 +113,7 @@ class TestWedge:
             df.iloc[i, df.columns.get_loc('low')] = v
         # 当前价置于两线之间（upper@49≈154，lower@49≈151）
         df.iloc[-1, df.columns.get_loc('close')] = 152.5
-        pd_.find_swing_points = lambda h, l, window=3: (peaks, troughs)
+        pd_.find_swing_points = lambda h, lo, window=3: (peaks, troughs)
 
         result = pd_.detect_wedge(df)
         assert result['detected']
@@ -133,7 +133,7 @@ class TestWedge:
             df.iloc[i, df.columns.get_loc('high')] = v
         for i, v in trough_vals.items():
             df.iloc[i, df.columns.get_loc('low')] = v
-        pd_.find_swing_points = lambda h, l, window=3: (peaks, troughs)
+        pd_.find_swing_points = lambda h, lo, window=3: (peaks, troughs)
 
         result = pd_.detect_wedge(df)
         assert not result['detected']
