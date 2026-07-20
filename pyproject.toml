@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "technical-analysis-assistant"
+version = "0.1.0"
+description = "基于教材 Skill 知识库的多维度技术分析系统"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Technical Analysis Assistant Team"}
+]
+keywords = ["technical-analysis", "stock", "llm", "quantitative"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "yfinance>=0.2.0",
+    "akshare>=1.12.0",
+    "requests>=2.31.0",
+    "openai>=1.0.0",
+    "pdfplumber>=0.10.0",
+    "python-docx>=1.1.0",
+    "pymupdf>=1.23.0",
+    "rapidocr-onnxruntime>=1.3.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "mypy>=1.8.0",
+    "ruff>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/YOUR_USERNAME/technical-analysis-assistant"
+Repository = "https://github.com/YOUR_USERNAME/technical-analysis-assistant"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["utils*", "api*", "tests*"]
+exclude = ["data*", "logs*", ".pytest_cache*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

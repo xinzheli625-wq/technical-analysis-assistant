@@ -1,0 +1,69 @@
+# 环境变量（包含 API Key）
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Claude Code 本地会话配置（Skills 保留）
+.claude/settings.local.json
+.claude/scheduled_tasks.json
+.claude/scheduled_tasks.lock
+
+# 运行时生成的数据文件（不需要版本控制）
+data/feedback_records.json
+data/statistics.json
+data/feishu_cache.json
+data/test_records*.json
+data/test_stats*.json
+data/predictions.json
+data/book_registry.json
+data/*_log.txt
+data/*_analysis_log.txt
+data/*_indicator_summary.txt
+data/*_triggered_skills.txt
+
+# 运行时生成的目录
+data/simulation/
+data/snapshots/
+data/tracking/
+data/pipeline_traces/
+data/feishu_doc_cache/
+data/archive/
+data/extracted/
+
+# 根目录运行时文件
+*_raw.json
+test_records.csv
+curl_err.log
+curl_debug.log
+ocr_progress.log
+
+# 通配忽略运行时数据，但核心资产在下面单独放行
+data/*.csv
+data/*.json
+data/*.jsonl
+
+# 核心数据资产（必须保留）
+!data/sample_aapl_daily.csv
+!data/skill_rules.jsonl
+!data/skill_rules_index.json
+!data/indicator_registry.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# 日志
+logs/
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db

@@ -1,0 +1,17 @@
+{
+  "total_rules": 1209,
+  "by_category": {
+    "behavior": 130,
+    "patterns": 776,
+    "scoring": 19,
+    "volume_price": 72,
+    "trend": 80,
+    "events": 14,
+    "indicators": 117,
+    "momentum": 1
+  },
+  "by_status": {
+    "active": 1209
+  },
+  "last_updated": "2026-06-06T21:23:40.523824"
+}

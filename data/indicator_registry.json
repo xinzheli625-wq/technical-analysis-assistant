@@ -1,0 +1,1197 @@
+{
+  "updated_at": "2026-07-20T16:21:24.972699",
+  "indicators": {
+    "sma": {
+      "name": "sma",
+      "name_cn": "简单移动平均线",
+      "category": "trend",
+      "description": "n周期收盘价的简单平均",
+      "formula": "SMA = sum(close, n) / n",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "sma"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "ema": {
+      "name": "ema",
+      "name_cn": "指数移动平均线",
+      "category": "trend",
+      "description": "加权平均，近期价格权重更高",
+      "formula": "EMA_t = alpha * close_t + (1-alpha) * EMA_t-1, alpha=2/(n+1)",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "ema"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "wma": {
+      "name": "wma",
+      "name_cn": "加权移动平均线",
+      "category": "trend",
+      "description": "线性加权平均",
+      "formula": "WMA = sum(close_i * i) / sum(i)",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "wma"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "adx": {
+      "name": "adx",
+      "name_cn": "平均趋向指数",
+      "category": "trend",
+      "description": "衡量趋势强度，0-100",
+      "formula": "ADX = SMA(DX, n), DX = abs(+DI - -DI) / (+DI + -DI) * 100",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "adx",
+        "plus_di",
+        "minus_di"
+      ],
+      "parameters": {
+        "period": 14
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "price_roc": {
+      "name": "price_roc",
+      "name_cn": "价格变动率",
+      "category": "trend",
+      "description": "当前价格与n周期前价格的百分比变化",
+      "formula": "ROC = (close_t - close_t-n) / close_t-n * 100",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "roc"
+      ],
+      "parameters": {
+        "period": 12
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "trix": {
+      "name": "trix",
+      "name_cn": "三重指数平滑均线",
+      "category": "trend",
+      "description": "三重EMA的百分比变化",
+      "formula": "TRIX = (EMA3_t - EMA3_t-1) / EMA3_t-1 * 100",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "trix"
+      ],
+      "parameters": {
+        "period": 15
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "parabolic_sar": {
+      "name": "parabolic_sar",
+      "name_cn": "抛物线转向",
+      "category": "trend",
+      "description": "跟踪止损和趋势反转指标",
+      "formula": "SAR_t = SAR_t-1 + AF * (EP - SAR_t-1)",
+      "inputs": [
+        "high",
+        "low"
+      ],
+      "outputs": [
+        "sar"
+      ],
+      "parameters": {
+        "af": 0.02,
+        "max_af": 0.2
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "supertrend": {
+      "name": "supertrend",
+      "name_cn": "超级趋势",
+      "category": "trend",
+      "description": "基于ATR的趋势跟踪指标",
+      "formula": "Upper = (H+L)/2 + multiplier*ATR, Lower = (H+L)/2 - multiplier*ATR",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "supertrend",
+        "direction",
+        "upper",
+        "lower"
+      ],
+      "parameters": {
+        "period": 10,
+        "multiplier": 3.0
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "ichimoku": {
+      "name": "ichimoku",
+      "name_cn": "一目均衡表",
+      "category": "trend",
+      "description": "多时间框架趋势分析系统",
+      "formula": "Tenkan=(9H+9L)/2, Kijun=(26H+26L)/2, Senkou=(Tenkan+Kijun)/2",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "tenkan_sen",
+        "kijun_sen",
+        "senkou_span_a",
+        "senkou_span_b",
+        "chikou_span"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "linear_reg": {
+      "name": "linear_reg",
+      "name_cn": "线性回归通道",
+      "category": "trend",
+      "description": "最小二乘拟合的趋势通道",
+      "formula": "y = ax + b, 标准误差构建通道",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "reg_line",
+        "upper",
+        "lower",
+        "slope"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "ma_envelope": {
+      "name": "ma_envelope",
+      "name_cn": "均线包络线",
+      "category": "trend",
+      "description": "基于百分比的均线通道",
+      "formula": "Upper = MA*(1+pct%), Lower = MA*(1-pct%)",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "middle",
+        "upper",
+        "lower",
+        "width_pct"
+      ],
+      "parameters": {
+        "period": 20,
+        "pct": 2.5
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "heikin_ashi": {
+      "name": "heikin_ashi",
+      "name_cn": "平均K线",
+      "category": "trend",
+      "description": "平滑价格数据，更易识别趋势",
+      "formula": "HA_Close=(O+H+L+C)/4, HA_Open=(HA_Open_prev+HA_Close_prev)/2",
+      "inputs": [
+        "open",
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "ha_open",
+        "ha_high",
+        "ha_low",
+        "ha_close"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "rsi": {
+      "name": "rsi",
+      "name_cn": "相对强弱指数",
+      "category": "momentum",
+      "description": "衡量价格变动速度和幅度",
+      "formula": "RSI = 100 - 100 / (1 + RS), RS = avg_gain / avg_loss",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "rsi"
+      ],
+      "parameters": {
+        "period": 14
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "macd": {
+      "name": "macd",
+      "name_cn": "指数平滑异同平均线",
+      "category": "momentum",
+      "description": "趋势跟踪动量指标",
+      "formula": "MACD = EMA(12) - EMA(26), Signal = EMA(MACD, 9)",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "macd",
+        "signal",
+        "histogram"
+      ],
+      "parameters": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "kdj": {
+      "name": "kdj",
+      "name_cn": "随机指标",
+      "category": "momentum",
+      "description": "比较收盘价与价格区间",
+      "formula": "K = SMA(RSV, 3), D = SMA(K, 3), J = 3K - 2D",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "k",
+        "d",
+        "j"
+      ],
+      "parameters": {
+        "n": 9,
+        "m1": 3,
+        "m2": 3
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "cci": {
+      "name": "cci",
+      "name_cn": "商品通道指数",
+      "category": "momentum",
+      "description": "衡量价格与平均价格的偏离",
+      "formula": "CCI = (TP - SMA(TP, n)) / (0.015 * mean_deviation)",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "cci"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "stoch": {
+      "name": "stoch",
+      "name_cn": "随机震荡器",
+      "category": "momentum",
+      "description": "KDJ的简化版",
+      "formula": "%K = (close - low_n) / (high_n - low_n) * 100",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "stoch_k",
+        "stoch_d"
+      ],
+      "parameters": {
+        "k_period": 14,
+        "d_period": 3
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "williams_r": {
+      "name": "williams_r",
+      "name_cn": "威廉指标",
+      "category": "momentum",
+      "description": "衡量超买超卖",
+      "formula": "%R = (high_n - close) / (high_n - low_n) * -100",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "williams_r"
+      ],
+      "parameters": {
+        "period": 14
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "momentum": {
+      "name": "momentum",
+      "name_cn": "动量指标",
+      "category": "momentum",
+      "description": "当前价格与n周期前价格的差",
+      "formula": "MOM = close_t - close_t-n",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "momentum"
+      ],
+      "parameters": {
+        "period": 10
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "tsi": {
+      "name": "tsi",
+      "name_cn": "真实强弱指数",
+      "category": "momentum",
+      "description": "双重平滑的动量指标",
+      "formula": "TSI = 100 * PC_EMA / |PC|_EMA",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "tsi"
+      ],
+      "parameters": {
+        "long_period": 25,
+        "short_period": 13
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "awesome_oscillator": {
+      "name": "awesome_oscillator",
+      "name_cn": "动量震荡器",
+      "category": "momentum",
+      "description": "5期和34期中位数价格差的动量指标",
+      "formula": "AO = SMA(median_price,5) - SMA(median_price,34)",
+      "inputs": [
+        "high",
+        "low"
+      ],
+      "outputs": [
+        "ao"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "ultimate_oscillator": {
+      "name": "ultimate_oscillator",
+      "name_cn": "终极震荡器",
+      "category": "momentum",
+      "description": "多时间框架加权动量指标",
+      "formula": "UO = 100*(4*Avg7 + 2*Avg14 + Avg28)/7",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "uo"
+      ],
+      "parameters": {
+        "period1": 7,
+        "period2": 14,
+        "period3": 28
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "ppo": {
+      "name": "ppo",
+      "name_cn": "百分比价格震荡器",
+      "category": "momentum",
+      "description": "MACD的百分比版本",
+      "formula": "PPO = (EMA_fast - EMA_slow)/EMA_slow * 100",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "ppo",
+        "signal",
+        "histogram"
+      ],
+      "parameters": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "dpo": {
+      "name": "dpo",
+      "name_cn": "去趋势价格震荡器",
+      "category": "momentum",
+      "description": "去除趋势后的价格震荡",
+      "formula": "DPO = Close - SMA(Close shifted)",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "dpo"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "stoch_rsi": {
+      "name": "stoch_rsi",
+      "name_cn": "随机RSI",
+      "category": "momentum",
+      "description": "RSI的随机化处理",
+      "formula": "StochRSI = (RSI - RSI_low) / (RSI_high - RSI_low)",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "stoch_rsi",
+        "k",
+        "d"
+      ],
+      "parameters": {
+        "rsi_period": 14,
+        "stoch_period": 14,
+        "k_period": 3,
+        "d_period": 3
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "elder_ray": {
+      "name": "elder_ray",
+      "name_cn": "艾尔德射线",
+      "category": "momentum",
+      "description": "衡量买卖双方力量对比",
+      "formula": "Bull Power = High - EMA, Bear Power = Low - EMA",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "bull_power",
+        "bear_power",
+        "ema"
+      ],
+      "parameters": {
+        "period": 13
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "atr": {
+      "name": "atr",
+      "name_cn": "真实波幅",
+      "category": "volatility",
+      "description": "衡量价格波动幅度",
+      "formula": "TR = max(high-low, |high-close_prev|, |low-close_prev|), ATR = SMA(TR, n)",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "atr"
+      ],
+      "parameters": {
+        "period": 14
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "bollinger": {
+      "name": "bollinger",
+      "name_cn": "布林带",
+      "category": "volatility",
+      "description": "基于标准差的波动区间",
+      "formula": "Middle=SMA(close,20), Upper=Middle+2*std, Lower=Middle-2*std",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "upper",
+        "middle",
+        "lower",
+        "bandwidth",
+        "percent_b"
+      ],
+      "parameters": {
+        "period": 20,
+        "std": 2
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "hist_vol": {
+      "name": "hist_vol",
+      "name_cn": "历史波动率",
+      "category": "volatility",
+      "description": "对数收益率的年化标准差",
+      "formula": "HV = std(ln(close_t/close_t-1)) * sqrt(252)",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "hist_vol"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "keltner": {
+      "name": "keltner",
+      "name_cn": "凯尔特纳通道",
+      "category": "volatility",
+      "description": "基于ATR的波动通道",
+      "formula": "Middle=EMA(typical_price), Upper=Middle+mult*ATR",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "upper",
+        "middle",
+        "lower"
+      ],
+      "parameters": {
+        "period": 20,
+        "atr_period": 10,
+        "multiplier": 2.0
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "donchian": {
+      "name": "donchian",
+      "name_cn": "唐奇安通道",
+      "category": "volatility",
+      "description": "基于n周期高低点的通道",
+      "formula": "Upper=max(high,n), Lower=min(low,n)",
+      "inputs": [
+        "high",
+        "low"
+      ],
+      "outputs": [
+        "upper",
+        "middle",
+        "lower"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "std_dev": {
+      "name": "std_dev",
+      "name_cn": "标准差",
+      "category": "volatility",
+      "description": "收盘价的滚动标准差",
+      "formula": "StdDev = std(close, n)",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "std_dev"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "ulcer_index": {
+      "name": "ulcer_index",
+      "name_cn": "溃疡指数",
+      "category": "volatility",
+      "description": "衡量下行波动风险",
+      "formula": "UI = sqrt(mean((drawdown)^2))",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "ulcer_index"
+      ],
+      "parameters": {
+        "period": 14
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "chaikin_volatility": {
+      "name": "chaikin_volatility",
+      "name_cn": "蔡金波动率",
+      "category": "volatility",
+      "description": "高低差EMA的变化率",
+      "formula": "Chaikin Vol = (EMA(H-L) - EMA(H-L)_prev) / EMA(H-L)_prev",
+      "inputs": [
+        "high",
+        "low"
+      ],
+      "outputs": [
+        "chaikin_vol"
+      ],
+      "parameters": {
+        "ema_period": 10,
+        "roc_period": 10
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "obv": {
+      "name": "obv",
+      "name_cn": "能量潮",
+      "category": "volume",
+      "description": "累积成交量指标",
+      "formula": "OBV_t = OBV_t-1 + volume (if close>close_prev) - volume (if close<close_prev)",
+      "inputs": [
+        "close",
+        "volume"
+      ],
+      "outputs": [
+        "obv"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "volume_ma": {
+      "name": "volume_ma",
+      "name_cn": "成交量均线",
+      "category": "volume",
+      "description": "成交量的简单移动平均",
+      "formula": "VMA = SMA(volume, n)",
+      "inputs": [
+        "volume"
+      ],
+      "outputs": [
+        "volume_ma"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "volume_ratio": {
+      "name": "volume_ratio",
+      "name_cn": "量比",
+      "category": "volume",
+      "description": "当前成交量与历史平均的比值",
+      "formula": "Ratio = volume_t / SMA(volume, n)",
+      "inputs": [
+        "volume"
+      ],
+      "outputs": [
+        "volume_ratio"
+      ],
+      "parameters": {
+        "period": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "vwap": {
+      "name": "vwap",
+      "name_cn": "成交量加权均价",
+      "category": "volume",
+      "description": "按成交量加权的平均价格",
+      "formula": "VWAP = sum(typical_price * volume) / sum(volume)",
+      "inputs": [
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "outputs": [
+        "vwap"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "mfi": {
+      "name": "mfi",
+      "name_cn": "资金流量指标",
+      "category": "volume",
+      "description": "量价结合的超买超卖指标",
+      "formula": "MFI = 100 - 100/(1 + money_flow_ratio)",
+      "inputs": [
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "outputs": [
+        "mfi"
+      ],
+      "parameters": {
+        "period": 14
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "ad_line": {
+      "name": "ad_line",
+      "name_cn": "累积派发线",
+      "category": "volume",
+      "description": "累积资金流入流出",
+      "formula": "AD = AD_prev + ((close-low) - (high-close)) / (high-low) * volume",
+      "inputs": [
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "outputs": [
+        "ad_line"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "chaikin_oscillator": {
+      "name": "chaikin_oscillator",
+      "name_cn": "蔡金震荡器",
+      "category": "volume",
+      "description": "AD线的快EMA减慢EMA",
+      "formula": "CO = EMA(AD,3) - EMA(AD,10)",
+      "inputs": [
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "outputs": [
+        "chaikin_osc"
+      ],
+      "parameters": {
+        "fast": 3,
+        "slow": 10
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "ease_of_movement": {
+      "name": "ease_of_movement",
+      "name_cn": "简易波动指标",
+      "category": "volume",
+      "description": "衡量价格移动难易度",
+      "formula": "EOM = ((H+L)/2 - (H+L)_prev/2) / (Volume/(H-L))",
+      "inputs": [
+        "high",
+        "low",
+        "volume"
+      ],
+      "outputs": [
+        "eom"
+      ],
+      "parameters": {
+        "period": 14
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "force_index": {
+      "name": "force_index",
+      "name_cn": "力量指数",
+      "category": "volume",
+      "description": "价格变化乘以成交量",
+      "formula": "Force = (Close - Close_prev) * Volume",
+      "inputs": [
+        "close",
+        "volume"
+      ],
+      "outputs": [
+        "force_index"
+      ],
+      "parameters": {
+        "period": 13
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "nvi": {
+      "name": "nvi",
+      "name_cn": "负成交量指标",
+      "category": "volume",
+      "description": "成交量减少日的价格累积",
+      "formula": "NVI = NVI_prev + ROC(if Volume < Volume_prev)",
+      "inputs": [
+        "close",
+        "volume"
+      ],
+      "outputs": [
+        "nvi"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "pvi": {
+      "name": "pvi",
+      "name_cn": "正成交量指标",
+      "category": "volume",
+      "description": "成交量增加日的价格累积",
+      "formula": "PVI = PVI_prev + ROC(if Volume > Volume_prev)",
+      "inputs": [
+        "close",
+        "volume"
+      ],
+      "outputs": [
+        "pvi"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "double_bottom": {
+      "name": "double_bottom",
+      "name_cn": "双底",
+      "category": "pattern",
+      "description": "两个相近低点+中间高点的反转形态",
+      "formula": "两个troughs相近 + peak在中间",
+      "inputs": [
+        "low"
+      ],
+      "outputs": [
+        "detected",
+        "confidence"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "head_shoulders": {
+      "name": "head_shoulders",
+      "name_cn": "头肩顶",
+      "category": "pattern",
+      "description": "三个峰，中间最高的反转形态",
+      "formula": "peak1 < peak2 > peak3, shoulders similar",
+      "inputs": [
+        "high"
+      ],
+      "outputs": [
+        "detected",
+        "confidence"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "triangle": {
+      "name": "triangle",
+      "name_cn": "三角形",
+      "category": "pattern",
+      "description": "收敛的上下轨",
+      "formula": "趋势线收敛",
+      "inputs": [
+        "high",
+        "low"
+      ],
+      "outputs": [
+        "detected",
+        "type",
+        "confidence"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "cup_handle": {
+      "name": "cup_handle",
+      "name_cn": "杯柄形态",
+      "category": "pattern",
+      "description": "U型底部+右侧小幅回调的延续形态",
+      "formula": "U型底部 + 右侧高点 + 柄部回调",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "detected",
+        "confidence",
+        "handle_depth_pct"
+      ],
+      "parameters": {
+        "cup_lookback": 60
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "wedge": {
+      "name": "wedge",
+      "name_cn": "楔形",
+      "category": "pattern",
+      "description": "同向收敛的趋势线",
+      "formula": "上下轨同向收敛",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "detected",
+        "type",
+        "confidence"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "flag_pennant": {
+      "name": "flag_pennant",
+      "name_cn": "旗形三角旗",
+      "category": "pattern",
+      "description": "快速运动后的小幅整理",
+      "formula": "旗杆 + 旗面(小幅回调/收敛)",
+      "inputs": [
+        "close",
+        "high",
+        "low"
+      ],
+      "outputs": [
+        "detected",
+        "type",
+        "confidence",
+        "direction"
+      ],
+      "parameters": {
+        "pole_lookback": 20
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "pivot_points": {
+      "name": "pivot_points",
+      "name_cn": "枢轴点",
+      "category": "levels",
+      "description": "基于前一日高低收计算关键价位",
+      "formula": "PP=(H+L+C)/3, R1=2*PP-L, S1=2*PP-H",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "pp",
+        "r1",
+        "s1",
+        "r2",
+        "s2"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "fibonacci": {
+      "name": "fibonacci",
+      "name_cn": "斐波那契回撤",
+      "category": "levels",
+      "description": "基于波段高低点计算回撤位",
+      "formula": "levels = high - (high-low) * [0.236, 0.382, 0.5, 0.618, 0.786]",
+      "inputs": [
+        "high",
+        "low"
+      ],
+      "outputs": [
+        "fib_236",
+        "fib_382",
+        "fib_500",
+        "fib_618",
+        "fib_786"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "clusters": {
+      "name": "clusters",
+      "name_cn": "聚类支撑阻力",
+      "category": "levels",
+      "description": "基于历史极值点的聚类分析",
+      "formula": "DBSCAN clustering on swing highs/lows",
+      "inputs": [
+        "high",
+        "low"
+      ],
+      "outputs": [
+        "support_clusters",
+        "resistance_clusters"
+      ],
+      "parameters": {
+        "eps_pct": 0.02
+      },
+      "source": "builtin",
+      "created_at": ""
+    },
+    "channel": {
+      "name": "channel",
+      "name_cn": "通道",
+      "category": "pattern",
+      "description": "平行的上下轨形成的趋势通道",
+      "formula": "peaks连线和troughs连线近似平行",
+      "inputs": [
+        "high",
+        "low"
+      ],
+      "outputs": [
+        "detected",
+        "type",
+        "confidence"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "rectangle": {
+      "name": "rectangle",
+      "name_cn": "矩形",
+      "category": "pattern",
+      "description": "价格在水平支撑和阻力之间震荡",
+      "formula": "多个peaks在同一水平，多个troughs在同一水平",
+      "inputs": [
+        "high",
+        "low"
+      ],
+      "outputs": [
+        "detected",
+        "confidence"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "rounded": {
+      "name": "rounded",
+      "name_cn": "圆弧",
+      "category": "pattern",
+      "description": "缓慢 rounded 的顶部或底部",
+      "formula": "价格缓慢改变方向，波动率逐渐下降",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "detected",
+        "type",
+        "confidence"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "v_reversal": {
+      "name": "v_reversal",
+      "name_cn": "V形反转",
+      "category": "pattern",
+      "description": "快速反向运动形成V字",
+      "formula": "急剧下跌后急剧上涨（或相反）",
+      "inputs": [
+        "close"
+      ],
+      "outputs": [
+        "detected",
+        "type",
+        "confidence"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "island_reversal": {
+      "name": "island_reversal",
+      "name_cn": "岛形反转",
+      "category": "pattern",
+      "description": "跳空缺口后反向跳空",
+      "formula": "向上跳空+小幅整理+向下跳空（或相反）",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "detected",
+        "type",
+        "confidence"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    },
+    "gaps": {
+      "name": "gaps",
+      "name_cn": "缺口",
+      "category": "pattern",
+      "description": "价格跳空缺口分析",
+      "formula": "识别普通/突破/持续/衰竭缺口",
+      "inputs": [
+        "high",
+        "low",
+        "close"
+      ],
+      "outputs": [
+        "gaps",
+        "breakaway",
+        "runaway",
+        "exhaustion"
+      ],
+      "parameters": {},
+      "source": "builtin",
+      "created_at": ""
+    }
+  }
+}
