@@ -177,14 +177,23 @@ class SkillKnowledgeBase:
                 self._raw_cache[name] = f"# {filename} not found"
                 self._core_cache[name] = ""
 
-    def _extract_core_framework(self, content: str) -> str:
-        """从完整skill文件中提取核心框架（简短版本，约原文30%长度）
+    # 文件小于该阈值时直接使用全文（当前 references 全部只有 1-2K 字符，
+    # 启发式精炼只会损失信息）；超过阈值才启用行过滤精炼
+    CORE_FULL_TEXT_THRESHOLD = 6000
 
-        策略：
+    def _extract_core_framework(self, content: str) -> str:
+        """从完整skill文件中提取核心框架
+
+        小文件（<=6000 字符）直接返回全文——references 本来就是人工策划的
+        精炼框架，启发式行过滤只会把 behavior/events 等内容砍掉 80%+。
+        只有大文件才启用行过滤：
         - 保留标题和一级目录结构
         - 保留关键定义和阈值
         - 去掉冗长的示例和解释
         """
+        if len(content) <= self.CORE_FULL_TEXT_THRESHOLD:
+            return content
+
         lines = content.split('\n')
         core_lines = []
         in_example = False

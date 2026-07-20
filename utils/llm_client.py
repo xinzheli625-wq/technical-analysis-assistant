@@ -7,7 +7,6 @@
 - 环境变量: DEEPSEEK_API_KEY
 """
 
-import base64
 import json
 import os
 from typing import Any, Dict, List, Optional
@@ -175,22 +174,15 @@ class DeepSeekClient:
     # ========== 核心业务 ==========
 
     def analyze_screenshot(self, image_path: str) -> Dict[str, Any]:
-        """截图视觉分析 -> deepseek-v4-pro（支持图片输入）"""
-        with open(image_path, "rb") as f:
-            image_b64 = base64.b64encode(f.read()).decode("utf-8")
+        """截图视觉分析（当前不可用：deepseek-v4-pro 不支持图片输入）
 
-        system_prompt = self._build_prompt('screenshot', max_tokens=10000)
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": [
-                {"type": "text", "text": "请基于上述技术分析体系，分析这张K线图的技术特征。"},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}}
-            ]}
-        ]
-
-        raw = self._call(messages, temperature=0.2, max_tokens=4096)
-        return _safe_parse_json(raw)
+        已实测确认 DeepSeek 官方 API 拒绝 image_url 类型消息（400）。
+        保留此方法用于将来接入支持视觉的模型。
+        """
+        raise NotImplementedError(
+            "deepseek-v4-pro 不支持图片输入，截图分析不可用。"
+            "如需恢复，请改用支持视觉的模型。"
+        )
 
     def analyze_trend(self, price_data: List[Dict],
                       indicator_text: Optional[str] = None) -> Dict[str, Any]:

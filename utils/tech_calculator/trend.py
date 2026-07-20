@@ -121,13 +121,14 @@ class TrendCalculator:
         tr3 = abs(low - close.shift(1))
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-        # +DM, -DM
+        # +DM, -DM（Wilder 定义：等值时两者皆 0；注意必须用原始值比较）
         plus_dm = high.diff()
         minus_dm = -low.diff()
         plus_dm[plus_dm < 0] = 0
         minus_dm[minus_dm < 0] = 0
-        plus_dm[plus_dm <= minus_dm] = 0
-        minus_dm[minus_dm <= plus_dm] = 0
+        both_zero = plus_dm == minus_dm  # 等值（含皆为0）双方清零
+        plus_dm[(plus_dm < minus_dm) | both_zero] = 0
+        minus_dm[(minus_dm < plus_dm) | both_zero] = 0
 
         # Smooth
         atr = tr.ewm(alpha=1/period, adjust=False).mean()
@@ -217,29 +218,45 @@ class TrendCalculator:
         tr2 = abs(high - close.shift(1))
         tr3 = abs(low - close.shift(1))
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr = tr.rolling(window=period).mean()
+        # 与 calc_atr 一致：Wilder 平滑
+        atr = tr.ewm(alpha=1 / period, adjust=False).mean()
 
         upper_band = (high + low) / 2 + multiplier * atr
         lower_band = (high + low) / 2 - multiplier * atr
 
+        n = len(df)
+        final_upper = pd.Series(index=df.index, dtype=float)
+        final_lower = pd.Series(index=df.index, dtype=float)
         supertrend = pd.Series(index=df.index, dtype=float)
         direction = pd.Series(index=df.index, dtype=int)  # 1=多头, -1=空头
 
-        for i in range(len(df)):
+        for i in range(n):
             if i == 0:
+                final_upper.iloc[i] = upper_band.iloc[i]
+                final_lower.iloc[i] = lower_band.iloc[i]
                 supertrend.iloc[i] = upper_band.iloc[i]
-                direction.iloc[i] = 1
+                direction.iloc[i] = -1
                 continue
 
-            if close.iloc[i] > supertrend.iloc[i-1]:
-                direction.iloc[i] = 1
+            # 标准 SuperTrend：轨道只向价格方向收敛，被击穿后跳到对侧轨道
+            if upper_band.iloc[i] < final_upper.iloc[i-1] or close.iloc[i-1] > final_upper.iloc[i-1]:
+                final_upper.iloc[i] = upper_band.iloc[i]
             else:
-                direction.iloc[i] = -1
+                final_upper.iloc[i] = final_upper.iloc[i-1]
 
-            if direction.iloc[i] == 1:
-                supertrend.iloc[i] = max(lower_band.iloc[i], supertrend.iloc[i-1])
+            if lower_band.iloc[i] > final_lower.iloc[i-1] or close.iloc[i-1] < final_lower.iloc[i-1]:
+                final_lower.iloc[i] = lower_band.iloc[i]
             else:
-                supertrend.iloc[i] = min(upper_band.iloc[i], supertrend.iloc[i-1])
+                final_lower.iloc[i] = final_lower.iloc[i-1]
+
+            if supertrend.iloc[i-1] == final_upper.iloc[i-1]:
+                # 此前贴着上轨（空头），收盘站上轨才翻多
+                direction.iloc[i] = 1 if close.iloc[i] > final_upper.iloc[i] else -1
+            else:
+                # 此前贴着下轨（多头），收盘破下轨才翻空
+                direction.iloc[i] = -1 if close.iloc[i] < final_lower.iloc[i] else 1
+
+            supertrend.iloc[i] = final_lower.iloc[i] if direction.iloc[i] == 1 else final_upper.iloc[i]
 
         return pd.DataFrame({
             'supertrend': supertrend,

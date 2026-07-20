@@ -191,12 +191,25 @@ class FeishuIntegration:
         # 返回相对路径（只返回文件名）
         return os.path.basename(abs_path)
 
+    @staticmethod
+    def _extract_doc_id(result: dict, action: str = '创建文档') -> str:
+        """从 lark-cli 返回中安全提取 doc_id，结构异常时给出带上下文的错误"""
+        doc_id = (result.get('data') or {}).get('doc_id')
+        if not doc_id:
+            raise RuntimeError(f'{action}失败: 返回中缺少 doc_id: {str(result)[:200]}')
+        return doc_id
+
+    @staticmethod
+    def _sanitize_arg(value: str) -> str:
+        """清理拼入 shell 命令的参数，防止引号破坏命令解析"""
+        return str(value).replace(chr(34), chr(32)).replace(chr(13), chr(32)).replace(chr(10), chr(32))
+
     def create_stock_doc(self, symbol: str, content: str = "") -> str:
         """为股票创建分析文档，返回 doc_token"""
         if symbol in self.stock_docs:
             return self.stock_docs[symbol]
 
-        title = f"{symbol} 技术分析"
+        title = self._sanitize_arg(f"{symbol} 技术分析")
         markdown = content or f"# {symbol} 技术分析\n\n> 创建于 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n---\n"
 
         # 写入临时文件，通过 @file 方式传入
@@ -214,7 +227,7 @@ class FeishuIntegration:
         if not result.get('ok'):
             raise RuntimeError(f'创建文档失败: {result.get("error", "unknown")}')
 
-        doc_token = result['data']['doc_id']
+        doc_token = self._extract_doc_id(result, f'创建 {symbol} 分析文档')
         self.stock_docs[symbol] = doc_token
         self._save_cache()
 
@@ -273,7 +286,7 @@ class FeishuIntegration:
                 os.remove(temp_path)
 
         if result.get('ok'):
-            self.records_doc_token = result['data']['doc_id']
+            self.records_doc_token = self._extract_doc_id(result, '创建汇总文档')
             self._save_cache()
         else:
             raise RuntimeError(f'创建汇总文档失败: {result.get("error", "unknown")}')
@@ -313,12 +326,13 @@ class FeishuIntegration:
         这里采用重新生成整个表格的方式。
         对于大量数据，建议定期导出为CSV或Excel。
         """
-        # 读取当前文档内容
-        result = self._run(
-            f'lark-cli docs +fetch --doc {self.records_doc_token} --format pretty'
-        )
-        # 由于v1 API的限制，这里只做追加说明
-        # 实际项目中可以维护本地缓存，定期全量更新
+        # 汇总文档可能尚未创建（例如先 validate 后 sync 分析），先确保存在
+        if not self.records_doc_token:
+            try:
+                self._ensure_records_doc_created()
+            except Exception as e:
+                print(f"[WARN] 汇总文档创建失败: {e}")
+                return False
 
         note = (
             f"\n\n> **验证更新** - 记录 `{record_id}`:\n"
@@ -433,7 +447,7 @@ class FeishuIntegration:
         if not result.get('ok'):
             raise RuntimeError(f'创建跟踪文档失败: {result.get("error", "unknown")}')
 
-        doc_token = result['data']['doc_id']
+        doc_token = self._extract_doc_id(result, '创建跟踪文档')
         self.stock_docs[cache_key] = doc_token
         self._save_cache()
 
@@ -529,8 +543,13 @@ class FeishuIntegration:
                 print("[WARN] 从飞书获取文档内容失败")
                 return False
 
-        # 找到 "## 后续跟踪" 标题
-        marker = '## 后续跟踪'
+        if not isinstance(cached, str):
+            print("[WARN] 文档内容格式异常（非文本），无法插入跟踪记录")
+            return False
+
+        # 找到 "# 后续跟踪" 标题（api.py 写入的是一级标题；
+        # 用一级标题做 marker 也能兼容匹配历史上的二级标题写法）
+        marker = '# 后续跟踪'
         idx = cached.find(marker)
         if idx == -1:
             # 如果没有找到标记，在文档末尾添加
@@ -553,7 +572,9 @@ class FeishuIntegration:
             print(f"[OK] 已更新 {symbol} 文档，新跟踪记录已放到最前")
         else:
             print("[WARN] 覆盖文档失败，尝试用append模式")
-            # 降级：用append模式追加到末尾
-            self.append_to_stock_doc(symbol, '\n' + tracking_content)
+            # 降级：用append模式追加到末尾；
+            # 本地缓存也必须同步更新，否则下次 overwrite 成功时会丢失本次记录
+            if self.append_to_stock_doc(symbol, '\n' + tracking_content):
+                self.save_doc_cache(symbol, cached)
 
         return success

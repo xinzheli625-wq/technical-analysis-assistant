@@ -65,8 +65,9 @@ class TechnicalAnalyzer:
                 pass
 
         # Step 3: SkillMatcher系统精确匹配（确定性计算，零歧义）
-        skill_match = None
-        if indicator_features:
+        # 优先使用上游（DeterministicPipeline）已完成的匹配结果，避免重复加载规则库和重复计算
+        skill_match = data.get('skill_match_result')
+        if skill_match is None and indicator_features:
             try:
                 skill_match = self.skill_matcher.match(indicator_features)
             except Exception:

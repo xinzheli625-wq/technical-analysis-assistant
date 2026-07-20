@@ -630,7 +630,7 @@ class FeatureExtractor:
         # ADX及变化率
         adx_df = self.trend.calc_adx(df) if all(c in df.columns for c in ['high', 'low']) else None
         adx = self._safe_latest(adx_df['adx']) if adx_df is not None else None
-        adx_10d_ago = adx_df['adx'].iloc[-10] if adx_df is not None and len(adx_df) > 10 else None
+        adx_10d_ago = adx_df['adx'].iloc[-11] if adx_df is not None and len(adx_df) > 11 else None
         adx_change = ((adx - adx_10d_ago) / adx_10d_ago * 100) if adx and adx_10d_ago else None
 
         # 均线偏离度
@@ -642,7 +642,7 @@ class FeatureExtractor:
         dev_50 = (latest / self._safe_latest(sma50) - 1) * 100 if self._safe_latest(sma50) else None
 
         # 偏离度变化率（过去10天）
-        dev_20_10d = (close.iloc[-10] / sma20.iloc[-10] - 1) * 100 if len(sma20) > 10 else None
+        dev_20_10d = (close.iloc[-11] / sma20.iloc[-11] - 1) * 100 if len(sma20) > 11 else None
         dev_20_change = (dev_20 - dev_20_10d) if dev_20 and dev_20_10d else None
 
         # 近期价格加速度
@@ -852,20 +852,20 @@ class FeatureExtractor:
             return {'error': 'Need at least 50 days for multi-timeframe analysis'}
 
         # 短期趋势（5日EMA）
-        ema5 = close.ewm(span=5).mean()
+        ema5 = close.ewm(span=5, adjust=False).mean()
         short_trend = 'up' if latest > ema5.iloc[-1] else 'down'
 
         # 中期趋势（20日EMA）
-        ema20 = close.ewm(span=20).mean()
+        ema20 = close.ewm(span=20, adjust=False).mean()
         mid_trend = 'up' if latest > ema20.iloc[-1] else 'down'
 
         # 长期趋势
-        ema50 = close.ewm(span=50).mean()
+        ema50 = close.ewm(span=50, adjust=False).mean()
         long_trend = 'up' if latest > ema50.iloc[-1] else 'down'
 
         # 均线方向（斜率）
         ema5_slope = (ema5.iloc[-1] - ema5.iloc[-5]) / ema5.iloc[-5] * 100 if len(ema5) > 5 else None
-        ema20_slope = (ema20.iloc[-1] - ema20.iloc[-10]) / ema20.iloc[-10] * 100 if len(ema20) > 10 else None
+        ema20_slope = (ema20.iloc[-1] - ema20.iloc[-11]) / ema20.iloc[-11] * 100 if len(ema20) > 11 else None
         ema50_slope = (ema50.iloc[-1] - ema50.iloc[-20]) / ema50.iloc[-20] * 100 if len(ema50) > 20 else None
 
         # 一致性判断

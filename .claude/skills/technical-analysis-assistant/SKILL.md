@@ -65,8 +65,8 @@ result = analyze("AAPL", days=200)   # 长线
 # 从用户上传的CSV/Excel文件分析
 result = assistant().analyze_from_file("path/to/data.csv", symbol="AAPL")
 
-# 从用户上传的K线截图分析
-result = assistant().analyze_screenshot("path/to/chart.png", symbol="AAPL")
+# 注意：K线截图分析暂不可用（deepseek-v4-pro 不支持图片输入）
+# 如用户上传截图，请引导其改用代码联网分析或导出CSV后 analyze_from_file
 
 # 快速获取指标摘要（纯文本）
 text = assistant().quick_indicators("AAPL", days=100)

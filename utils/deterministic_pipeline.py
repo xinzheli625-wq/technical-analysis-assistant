@@ -362,6 +362,7 @@ class DeterministicPipeline:
             'data': df.reset_index().to_dict('records') if hasattr(df, 'reset_index') else [],
             'input_type': 'api',
             'indicator_features': features,  # 传入已计算的指标，避免重复计算
+            'skill_match_result': match_result,  # 传入已完成的匹配，避免 analyzer 重复匹配
             'indicator_text': self.extractor.format_for_llm(features) if features else '',
             'market_regime': regime_info,
         }

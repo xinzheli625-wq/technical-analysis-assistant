@@ -122,7 +122,9 @@ class VolumeCalculator:
         typical_price = (df['high'] + df['low'] + df['close']) / 3
         raw_money_flow = typical_price * df['volume']
 
-        money_flow_sign = np.where(typical_price > typical_price.shift(1), 1, -1)
+        # 标准 MFI：TP 持平日（sign=0）不计入任何一方；首行也不计
+        tp_diff = typical_price - typical_price.shift(1)
+        money_flow_sign = np.sign(tp_diff.fillna(0))
         signed_money_flow = raw_money_flow * money_flow_sign
 
         positive_flow = pd.Series(np.where(signed_money_flow > 0, signed_money_flow, 0), index=df.index)
@@ -142,7 +144,9 @@ class VolumeCalculator:
         close = df['close']
         volume = df['volume']
 
-        money_flow_multiplier = ((close - low) - (high - close)) / (high - low)
+        # high==low（一字板）时乘数无定义，置 0 避免除零产生 NaN
+        hl_range = (high - low).replace(0, np.nan)
+        money_flow_multiplier = (((close - low) - (high - close)) / hl_range).fillna(0)
         money_flow_volume = money_flow_multiplier * volume
 
         return money_flow_volume.cumsum()
@@ -228,12 +232,13 @@ class VolumeCalculator:
         price_change = (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] if len(close) > 1 else 0
 
         vpa_signal = 'normal'
-        if abs(price_change) > 0.03 and vr > 1.5:
-            vpa_signal = 'strong_move_confirmed'
-        elif abs(price_change) > 0.03 and vr < 0.8:
-            vpa_signal = 'weak_move_suspect'
-        elif abs(price_change) < 0.01 and vr > 1.5:
-            vpa_signal = 'battle'
+        if vr is not None:  # vr 为 None（数据不足）时不做比较，防止 TypeError
+            if abs(price_change) > 0.03 and vr > 1.5:
+                vpa_signal = 'strong_move_confirmed'
+            elif abs(price_change) > 0.03 and vr < 0.8:
+                vpa_signal = 'weak_move_suspect'
+            elif abs(price_change) < 0.01 and vr > 1.5:
+                vpa_signal = 'battle'
 
         return {
             'volume_ratio': round(vr, 2) if vr else None,

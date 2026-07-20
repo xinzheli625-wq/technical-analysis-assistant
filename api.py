@@ -773,37 +773,18 @@ class TechnicalAnalysisAssistant:
                            save_record: bool = True) -> Dict[str, Any]:
         """分析K线截图（用户上传的图片）
 
-        Args:
-            image_path: 截图文件路径（.png/.jpg/.jpeg）
-            symbol: 股票代码（用于记录）
-            save_record: 是否保存到反馈系统
-
-        说明: 截图分析依赖LLM的视觉能力，指标值由LLM从图中估算，
-              精度不如精确计算。建议作为辅助参考。
+        当前不可用：DeepSeek 官方 API（deepseek-v4-pro）不支持图片输入
+        （已实测确认，API 返回 400: unknown variant `image_url`）。
+        请改用以下方式之一：
+        1. analyze(symbol, days=...) — 代码联网下载数据分析（推荐）
+        2. analyze_from_file(csv_path) — 导出 K 线 CSV 后分析
+        3. 若配置了支持视觉的模型，可修改 utils/llm_client.py 的
+           analyze_screenshot 使用的模型后恢复此功能。
         """
-        print(f"[IMG] 正在分析截图: {image_path}")
-
-        # 使用LLM客户端的视觉分析
-        raw = self.analyzer.client.analyze_screenshot(image_path)
-
-        result = {
-            'symbol': symbol,
-            'input_type': 'screenshot',
-            'screenshot_analysis': raw,
-            'market_regime': {'primary': 'unknown', 'confidence': 0},
-            'indicator_summary': '截图分析：指标值由LLM从图中估算',
-        }
-
-        if save_record:
-            record_id = self.feedback.record_analysis(
-                result,
-                timeframe_days=20,
-                skills_used=[]
-            )
-            result['record_id'] = record_id
-            print(f"[SAVE] 分析已保存，记录ID: {record_id}")
-
-        return result
+        raise NotImplementedError(
+            "截图分析不可用：deepseek-v4-pro 不支持图片输入。"
+            "请改用 analyze(symbol) 联网分析，或 analyze_from_file(csv) 从文件分析。"
+        )
 
     # ========== Skill管理 ==========
 
@@ -1181,7 +1162,7 @@ class TechnicalAnalysisAssistant:
 
         cards = []
         for rule in sorted(rules, key=lambda r: r.get('performance', {}).get('win_rate') or 0, reverse=True):
-            perf = rule.get('performance', {})
+            perf = rule.get('performance') or {}
             win_rate = perf.get('win_rate')
             used = perf.get('used_count', 0)
             wins = perf.get('wins', 0)
@@ -1202,16 +1183,18 @@ class TechnicalAnalysisAssistant:
             status_color = status_colors.get(status, '#6b7280')
 
             # 分析步骤
-            steps = rule.get('analysis_steps', [])
-            steps_html = ''.join(f'<li>{s}</li>' for s in steps[:5])
+            import html as html_module
+            esc = html_module.escape
+            steps = rule.get('analysis_steps') or []
+            steps_html = ''.join(f'<li>{esc(str(s))}</li>' for s in steps[:5])
 
             # 参考数据
-            ref_data = rule.get('reference_data', {})
-            refs_html = ''.join(f'<span class="tag">{k}: {v}</span>' for k, v in list(ref_data.items())[:4])
+            ref_data = rule.get('reference_data') or {}
+            refs_html = ''.join(f'<span class="tag">{esc(str(k))}: {esc(str(v))}</span>' for k, v in list(ref_data.items())[:4])
 
             # 常见误区
-            pitfalls = rule.get('common_pitfalls', [])
-            pits_html = ''.join(f'<li>{p}</li>' for p in pitfalls[:3])
+            pitfalls = rule.get('common_pitfalls') or []
+            pits_html = ''.join(f'<li>{esc(str(p))}</li>' for p in pitfalls[:3])
 
             # 分环境胜率
             by_regime = perf.get('by_regime', {})
@@ -1231,18 +1214,18 @@ class TechnicalAnalysisAssistant:
             bar_width = (win_rate or 0.5) * 100
 
             cards.append(f'''
-            <div class="card" data-status="{status}" data-category="{rule.get('category', 'general')}">
+            <div class="card" data-status="{esc(str(status))}" data-category="{esc(str(rule.get('category', 'general')))}">
                 <div class="card-header">
                     <div>
-                        <span class="status-badge" style="background:{status_color}">{status}</span>
-                        <span class="rule-name">{rule.get('name', 'Unnamed')}</span>
-                        <span class="rule-id">[{rule.get('rule_id', '???')}]</span>
+                        <span class="status-badge" style="background:{status_color}">{esc(str(status))}</span>
+                        <span class="rule-name">{esc(str(rule.get('name', 'Unnamed')))}</span>
+                        <span class="rule-id">[{esc(str(rule.get('rule_id', '???')))}]</span>
                     </div>
                     <div class="win-rate" style="color:{rate_color}">{rate_text}</div>
                 </div>
                 <div class="win-bar"><div class="win-bar-fill" style="width:{bar_width}%;background:{rate_color}"></div></div>
                 <div class="card-body">
-                    <div class="section"><strong>核心思想：</strong>{rule.get('core_idea', rule.get('definition', ''))}</div>
+                    <div class="section"><strong>核心思想：</strong>{esc(str(rule.get('core_idea', rule.get('definition', ''))))}</div>
                     {'<div class="section"><strong>分析步骤：</strong><ol>' + steps_html + '</ol></div>' if steps else ''}
                     {'<div class="section"><strong>参考数据：</strong>' + refs_html + '</div>' if refs_html else ''}
                     {'<div class="section pitfalls"><strong>常见误区：</strong><ul>' + pits_html + '</ul></div>' if pits_html else ''}
@@ -1348,8 +1331,10 @@ function filter() {{
             if record:
                 symbol = record.get('symbol', '')
                 if symbol and symbol != 'UNKNOWN':
+                    # 60d 只有约 40+ 个交易日，达不到 regime 检测的 60 行下限；
+                    # 用 6 个月保证足够的交易日
                     ticker = yf.Ticker(symbol)
-                    df = ticker.history(period="60d")
+                    df = ticker.history(period="6mo")
                     if len(df) >= 60:
                         regime = self.regime_detector.detect(df)
                         market_regime = regime.primary
@@ -1382,12 +1367,15 @@ function filter() {{
         # 同步到飞书（如果启用）
         if self._feishu_enabled:
             try:
-                self.feishu.update_record_validation(record_id, {
+                sync_ok = self.feishu.update_record_validation(record_id, {
                     'actual_return_pct': actual_return_pct,
                     'outcome': result.get('outcome'),
                     'market_regime': market_regime,
                 })
-                print("[DOC] 已同步验证结果到飞书")
+                if sync_ok:
+                    print("[DOC] 已同步验证结果到飞书")
+                else:
+                    print("[WARN]  飞书验证结果同步失败（详见上方日志）")
             except Exception as e:
                 print(f"[WARN]  飞书同步失败: {e}")
 

@@ -47,10 +47,11 @@ class LevelCalculator:
                 self.registry.register(meta, calc_fn)
 
     def calc_pivot_points(self, df: pd.DataFrame, **kwargs) -> Dict[str, float]:
-        """计算枢轴点（基于最近一个完整周期）"""
-        high = df['high'].iloc[-1]
-        low = df['low'].iloc[-1]
-        close = df['close'].iloc[-1]
+        """计算枢轴点（基于前一完整周期的高低收，而非当日未完成 bar）"""
+        idx = -2 if len(df) >= 2 else -1
+        high = df['high'].iloc[idx]
+        low = df['low'].iloc[idx]
+        close = df['close'].iloc[idx]
 
         pp = (high + low + close) / 3
         r1 = 2 * pp - low

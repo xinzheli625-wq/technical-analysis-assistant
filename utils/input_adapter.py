@@ -90,25 +90,11 @@ class InputAdapter:
 
     def process_screenshot(self, image_path: str, symbol: str, market: str = "US",
                            timeframe: str = "daily") -> Dict[str, Any]:
-        """Process screenshot using LLM Vision + Skill knowledge."""
-        from utils.llm_client import DeepSeekClient
-
-        client = DeepSeekClient()
-        vision_result = client.analyze_screenshot(image_path)
-
-        return {
-            'symbol': symbol,
-            'market': market,
-            'timeframe': timeframe,
-            'input_type': 'screenshot',
-            'data': [],
-            'metadata': {
-                'image_path': image_path,
-                'llm_vision_analysis': vision_result,
-                'precision_note': '分析基于LLM视觉识别+Skill知识体系',
-                'vision_analysis_status': 'success' if not vision_result.get('parse_error') else 'partial'
-            }
-        }
+        """截图处理（当前不可用：deepseek-v4-pro 不支持图片输入）"""
+        raise NotImplementedError(
+            "截图分析不可用：deepseek-v4-pro 不支持图片输入。"
+            "请改用代码联网分析或 CSV/Excel 文件输入。"
+        )
 
 
 def normalize_excel(df: pd.DataFrame, symbol: str, market: str = "US", timeframe: str = "daily") -> Dict[str, Any]:

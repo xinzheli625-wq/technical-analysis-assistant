@@ -136,7 +136,8 @@ class MomentumCalculator:
         """KDJ计算"""
         low_list = df['low'].rolling(window=n, min_periods=n).min()
         high_list = df['high'].rolling(window=n, min_periods=n).max()
-        rsv = (df['close'] - low_list) / (high_list - low_list) * 100
+        # 窗口内 high==low（停牌/无波动）时 RSV 无定义，置 NaN 而非除零
+        rsv = (df['close'] - low_list) / (high_list - low_list).replace(0, np.nan) * 100
 
         k = rsv.ewm(com=m1 - 1, adjust=False).mean()
         d = k.ewm(com=m2 - 1, adjust=False).mean()
@@ -156,7 +157,7 @@ class MomentumCalculator:
         """Stochastic Oscillator"""
         low_min = df['low'].rolling(window=k_period).min()
         high_max = df['high'].rolling(window=k_period).max()
-        k = 100 * (df['close'] - low_min) / (high_max - low_min)
+        k = 100 * (df['close'] - low_min) / (high_max - low_min).replace(0, np.nan)
         d = k.rolling(window=d_period).mean()
         return pd.DataFrame({'stoch_k': k, 'stoch_d': d})
 
@@ -164,7 +165,7 @@ class MomentumCalculator:
         """Williams %R"""
         high_max = df['high'].rolling(window=period).max()
         low_min = df['low'].rolling(window=period).min()
-        return -100 * (high_max - df['close']) / (high_max - low_min)
+        return -100 * (high_max - df['close']) / (high_max - low_min).replace(0, np.nan)
 
     def calc_momentum(self, df: pd.DataFrame, period: int = 10, **kwargs) -> pd.Series:
         """Momentum"""
@@ -240,7 +241,7 @@ class MomentumCalculator:
         rsi_min = rsi.rolling(window=stoch_period).min()
         rsi_max = rsi.rolling(window=stoch_period).max()
 
-        stoch_rsi = (rsi - rsi_min) / (rsi_max - rsi_min)
+        stoch_rsi = (rsi - rsi_min) / (rsi_max - rsi_min).replace(0, np.nan)
         k = stoch_rsi.rolling(window=k_period).mean()
         d = k.rolling(window=d_period).mean()
 

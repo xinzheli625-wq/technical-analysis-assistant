@@ -125,8 +125,8 @@ class PatternDetector:
         if len(troughs) < 2:
             return {'detected': False, 'confidence': 0}
 
-        # 检查最近的troughs对
-        for i in range(len(troughs) - 1):
+        # 检查troughs对（从最近的一对开始，避免老形态抢先命中）
+        for i in range(len(troughs) - 2, -1, -1):
             t1 = troughs[i]
             t2 = troughs[i + 1]
 
@@ -144,10 +144,10 @@ class PatternDetector:
             if price_diff > tolerance:
                 continue
 
-            # 检查是否突破颈线
+            # 检查是否突破颈线：t2 之后任意收盘站上颈线才算确认
             if len(closes) > t2 + 1:
-                recent_close = closes.iloc[-1]
-                if recent_close > mid_high:
+                post_closes = closes.iloc[t2 + 1:]
+                if len(post_closes) > 0 and post_closes.max() > mid_high:
                     return {
                         'detected': True,
                         'confidence': round((1 - price_diff) * 100),
@@ -243,6 +243,12 @@ class PatternDetector:
         lower_y = np.array([lows.iloc[t] for t in recent_troughs])
         lower_slope = np.polyfit(lower_x, lower_y, 1)[0]
 
+        # 斜率按价格尺度归一化（元/根 → 每根相对变化），否则低价股永假、高价股永真
+        price_scale = float(highs.mean()) or 1.0
+        raw_upper_slope, raw_lower_slope = upper_slope, lower_slope
+        upper_slope /= price_scale
+        lower_slope /= price_scale
+
         # 判断类型
         triangle_type = None
         if upper_slope < -0.001 and lower_slope > 0.001:
@@ -264,7 +270,7 @@ class PatternDetector:
                 'confidence': min(95, int(100 - convergence * 1000)),
                 'upper_slope': round(upper_slope, 4),
                 'lower_slope': round(lower_slope, 4),
-                'apex_estimate': int(len(highs) + (upper_end - lower_end) / abs(upper_slope - lower_slope)) if abs(upper_slope - lower_slope) > 0.001 else None
+                'apex_estimate': int(len(highs) + (upper_end - lower_end) / abs(raw_upper_slope - raw_lower_slope)) if abs(raw_upper_slope - raw_lower_slope) > 1e-9 else None
             }
 
         return {'detected': False, 'confidence': 0}
@@ -479,10 +485,14 @@ class PatternDetector:
         first_half = closes.iloc[:half]
         second_half = closes.iloc[half:]
 
-        # 检查是否形成圆顶（前半段涨，后半段跌）
-        rounded_top = first_half.max() > first_half.iloc[0] and second_half.min() < second_half.iloc[-1]
-        # 检查是否形成圆底（前半段跌，后半段涨）
-        rounded_bottom = first_half.min() < first_half.iloc[0] and second_half.max() > second_half.iloc[-1]
+        # 检查是否形成圆顶（前半段冲高，后半段回落且末值接近后半段最低）
+        rounded_top = (first_half.max() > first_half.iloc[0]
+                       and second_half.iloc[-1] < second_half.iloc[0]
+                       and second_half.iloc[-1] <= second_half.min() * 1.05)
+        # 检查是否形成圆底（前半段探底，后半段回升且末值接近后半段最高）
+        rounded_bottom = (first_half.min() < first_half.iloc[0]
+                          and second_half.iloc[-1] > second_half.iloc[0]
+                          and second_half.iloc[-1] >= second_half.max() * 0.95)
 
         if not (rounded_top or rounded_bottom):
             return {'detected': False, 'confidence': 0}
@@ -543,8 +553,11 @@ class PatternDetector:
         max_price = closes.max()
         max_loc = closes.index.get_loc(max_idx)
 
+        # 最大值在窗口第 0 根时 before_max 为空，V顶不成立（防止 IndexError）
         before_max = closes.iloc[:max_loc]
-        rise_pct = (max_price - before_max.iloc[0]) / before_max.iloc[0] * 100
+        rise_pct = 0.0
+        if len(before_max) > 0 and before_max.iloc[0] > 0:
+            rise_pct = (max_price - before_max.iloc[0]) / before_max.iloc[0] * 100
 
         after_max = closes.iloc[max_loc:]
         drop_back_pct = (max_price - after_max.iloc[-1]) / max_price * 100
@@ -607,12 +620,14 @@ class PatternDetector:
         for up_idx, up_size in up_gaps:
             for down_idx, down_size in down_gaps:
                 if down_idx > up_idx + 2 and down_idx < up_idx + 10:  # 间隔2-10天
-                    # 检查中间区域是否被孤立（没有价格回填缺口）
-                    max(highs[up_idx:down_idx])
-                    min(lows[up_idx:down_idx])
+                    # 孤岛隔离性：两个缺口之间的价格不得回填第一个缺口
+                    # （整个区域的最低价必须高于向上跳空前一根的最高价）
+                    island_floor = min(lows[up_idx:down_idx])
+                    gap_base = highs[up_idx - 1]
+                    isolated = island_floor > gap_base
 
                     # 两个缺口之间的区域形成岛
-                    if up_size > 2 and down_size > 2:
+                    if isolated and up_size > 2 and down_size > 2:
                         return {
                             'detected': True,
                             'type': 'top',
@@ -626,7 +641,12 @@ class PatternDetector:
         for down_idx, down_size in down_gaps:
             for up_idx, up_size in up_gaps:
                 if up_idx > down_idx + 2 and up_idx < down_idx + 10:
-                    if down_size > 2 and up_size > 2:
+                    # 孤岛隔离性：区域最高价不得回填向下缺口
+                    island_ceiling = max(highs[down_idx:up_idx])
+                    gap_cap = lows[down_idx - 1]
+                    isolated = island_ceiling < gap_cap
+
+                    if isolated and down_size > 2 and up_size > 2:
                         return {
                             'detected': True,
                             'type': 'bottom',
@@ -756,9 +776,14 @@ class PatternDetector:
         lower_y = np.array([lows.iloc[t] for t in recent_troughs])
         lower_slope = np.polyfit(lower_x, lower_y, 1)[0]
 
-        # 楔形：两条线同向收敛
+        # 斜率按价格尺度归一化
+        price_scale = float(highs.mean()) or 1.0
+        upper_slope /= price_scale
+        lower_slope /= price_scale
+
+        # 楔形：两条线同向且收敛（上升楔形下轨更陡，下降楔形上轨更缓）
         wedge_type = None
-        if upper_slope > 0.001 and lower_slope > 0.001 and upper_slope > lower_slope:
+        if upper_slope > 0.001 and lower_slope > 0.001 and lower_slope > upper_slope:
             wedge_type = 'rising'  # 上升楔形（看跌）
         elif upper_slope < -0.001 and lower_slope < -0.001 and upper_slope > lower_slope:
             wedge_type = 'falling'  # 下降楔形（看涨）
@@ -801,8 +826,8 @@ class PatternDetector:
         df['high']
         df['low']
 
-        # 旗杆：前面一段的涨跌幅
-        pole = closes.iloc[:-10]
+        # 旗杆：旗面之前 pole_lookback 根的涨跌幅（不是全部历史）
+        pole = closes.iloc[-(pole_lookback + 10):-10]
         pole_return = (pole.iloc[-1] - pole.iloc[0]) / pole.iloc[0]
 
         # 旗面：最后10根K线

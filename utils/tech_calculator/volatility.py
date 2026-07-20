@@ -74,13 +74,15 @@ class VolatilityCalculator:
         tr3 = abs(low - close.shift(1))
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-        return tr.rolling(window=period).mean()
+        # 标准 ATR 使用 Wilder 平滑（RMA，alpha=1/n），与 ADX 内部一致
+        return tr.ewm(alpha=1 / period, adjust=False).mean()
 
     def calc_bollinger(self, df: pd.DataFrame, period: int = 20, std: int = 2, **kwargs) -> pd.DataFrame:
         """布林带计算"""
         close = df['close']
         middle = close.rolling(window=period).mean()
-        rolling_std = close.rolling(window=period).std()
+        # TA-Lib/主流行情软件使用总体标准差（ddof=0）
+        rolling_std = close.rolling(window=period).std(ddof=0)
         upper = middle + rolling_std * std
         lower = middle - rolling_std * std
 
