@@ -1543,11 +1543,24 @@ def analyze(symbol: str, days: int = None) -> Dict[str, Any]:
 def upload_skill(file_path: Optional[str] = None,
                  text: Optional[str] = None,
                  activate: bool = False) -> Dict[str, Any]:
-    """上传Skill（便捷函数）"""
+    """上传Skill（便捷函数）
+
+    Args:
+        file_path: 书籍文件路径（一次性自动提取整本）
+        text: 自然语言方法论描述
+        activate: 提取后是否立即激活（默认 False，先进入 pending 待审核）
+    """
     if file_path:
-        return assistant().upload_skill_book(file_path, activate=activate)
+        result = assistant().upload_skill_book(file_path, auto_extract=True)
+        if activate and result.get('pending_activation'):
+            for rule_id in result['pending_activation']:
+                assistant().activate_skill(rule_id)
+        return result
     elif text:
-        return assistant().upload_skill_text(text)
+        result = assistant().upload_skill_text(text)
+        if activate and result.get('rule_id'):
+            assistant().activate_skill(result['rule_id'])
+        return result
     else:
         raise ValueError("请提供 file_path 或 text")
 

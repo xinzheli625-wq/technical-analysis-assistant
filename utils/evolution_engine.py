@@ -3,12 +3,12 @@
 链路：PDF/Word解析 -> Claude Code语义理解分段 -> 用户确认 -> 逐段DeepSeek提取 -> 规则索引库写入
 """
 
+import hashlib
 import json
 import os
-import hashlib
 import re
-from typing import Dict, List, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 
 class EvolutionEngine:
@@ -81,10 +81,11 @@ class EvolutionEngine:
         Returns:
             OCR 识别后的完整文本
         """
+        import os
+        import tempfile
+
         import fitz  # pymupdf
         from rapidocr_onnxruntime import RapidOCR
-        import tempfile
-        import os
 
         print(f"[OCR] Parsing scanned PDF: {file_path}")
         print(f"   Page range: {page_start} - {page_end or 'end'}")
@@ -196,7 +197,7 @@ class EvolutionEngine:
 
             # 跳过空行，但保留单空行（去连续多空行）
             if not stripped:
-                if prev_line is not None and prev_line.strip():
+                if cleaned_lines and cleaned_lines[-1] != '':
                     cleaned_lines.append('')
                 continue
 

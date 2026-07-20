@@ -101,6 +101,132 @@ print(RuleIndex().get_stats())
 
 ---
 
+## Skill 提取流程（上传学习材料）
+
+系统支持在 Claude Code 对话中上传教材/笔记/飞书文档，提炼为结构化 Skill 存入知识库。
+整个流程是**人机协作**的：解析、清洗、OCR 等纯技术步骤全自动（零 API 消耗），
+分段方案和每段提取结果必须经用户审批。完整交互规范见
+[docs/SKILL_EXTRACTION_GUIDE.md](docs/SKILL_EXTRACTION_GUIDE.md)。
+
+### 整体链路
+
+```
+用户上传材料（PDF / Word / 飞书文档 / 自然语言）
+    ↓
+[阶段0] 解析路由 + 扫描检测（本地，零 API）
+    ├─ 文本版 PDF  → parse_pdf（pdfplumber）
+    ├─ 扫描版 PDF  → parse_pdf_ocr（RapidOCR，本地模型）
+    ├─ Word        → parse_word（python-docx）
+    └─ 解析失败    → 回退为直接读取文件文本，流程不中断
+    ↓
+[阶段0] 文本清洗 clean_text（本地，零 API）
+    ↓
+[阶段1] Claude Code 语义分段 → 用户审批分段方案
+    ↓
+[阶段2] 逐段 LLM 提取（DeepSeek）→ 用户审核每段结果
+    ↓   （可本地修改/删除/换指导词重新提取，零 API）
+    ↓
+保存到规则索引库（status=pending，不参与分析）
+    ↓
+[阶段3] 用户确认激活 → 知识库 reload → 后续分析生效
+```
+
+### 阶段 0：解析路由与 OCR 触发条件
+
+入口 `assistant().upload_skill_book(file_path)` 按文件类型路由：
+
+| 输入 | 判定 | 解析方式 |
+|------|------|----------|
+| `.pdf`，文本版 | `is_scanned_pdf()` 返回 False | `parse_pdf`（pdfplumber 逐页提取文本层） |
+| `.pdf`，扫描版 | `is_scanned_pdf()` 返回 True | `parse_pdf_ocr`（RapidOCR 本地 OCR） |
+| `.docx` 等其他后缀 | 不做扫描检测 | `parse_word`（python-docx） |
+| 飞书文档 URL | — | `upload_skill_from_feishu()` 读取文档内容 |
+| 自然语言描述 | — | `upload_skill_text()` 直接送 LLM 解析，无需分段 |
+
+**扫描版检测算法**（`EvolutionEngine.is_scanned_pdf`）：
+
+1. 用 PyMuPDF 打开 PDF，采样若干页：
+   - 始终采样前 3 页（索引 0/1/2）；
+   - 总页数 > 50 时加采中间页（`total // 2`）；
+   - 总页数 > 100 时再加采 3/4 处页（`total * 3 // 4`）。
+2. 采样页提取的文本 **> 50 字符** 才算"有文本层"
+   （避免扫描件里的页码、水印被误判为文本）。
+3. 有文本层的采样页占比 **< 20%（严格小于）→ 判定为扫描版，触发 OCR**。
+   边界情况：5 个采样页中恰好 1 页有文本（= 20%）时按文本版处理。
+4. 检测过程出现任何异常（文件损坏等）→ **默认按文本版处理**，
+   由 `parse_pdf` 的失败回退兜底，绝不因误判扫描版而浪费 OCR 时间。
+
+**OCR 执行**（`EvolutionEngine.parse_pdf_ocr`）：
+
+- 引擎：RapidOCR（ONNX 轻量模型），完全本地运行，零 API 消耗；
+- 流程：PyMuPDF 将每页渲染为 PNG（默认 200 DPI）→ RapidOCR 识别 →
+  拼接文本，临时图片随用随删；
+- **默认只识别前 100 页**（`page_start=1, page_end=100`），防止整本 OCR 过慢，
+  需要更大范围时可通过参数覆盖；
+- 每 10 页打印一次进度。
+
+**失败回退**：`parse_pdf` / `parse_word` 在专用库解析失败时，
+回退为按 UTF-8 直接读取文件内容，保证流程不中断。
+
+### 阶段 0：文本清洗规则（`clean_text`）
+
+| 规则 | 说明 |
+|------|------|
+| 去纯数字行 | 页码 |
+| 去"第 X 页" / "Page X" 行 | 中英文页码标记 |
+| 去连续重复行 | 跨页重复出现的页眉（非连续重复保留，避免误删正文术语） |
+| 压缩连续空行 | 多个空行合并为一个，保留段落分隔 |
+
+### 阶段 1：语义分段（`set_book_segments`）
+
+清洗后的全文由 Claude Code 理解结构、提出分段方案，用户审批后调用
+`set_book_segments(segments_config)` 设置。分段定位机制：
+
+- 每段用 `start_marker` / `end_marker` 定位，marker 是**原文中的整行文本**
+  （strip 后精确匹配）；
+- `end_marker` 可省略：自动以**下一段的 `start_marker`** 作为本段结束；
+- 分段原则：概念章合并、方法论密集章单独成段，每段约 500–3000 tokens。
+
+### 阶段 2：逐段 LLM 提取（`extract_book_segment`）
+
+- 一次只提取一段：只把该段原文（而非全书）发给 DeepSeek，
+  可选附带用户的自然语言指导（如"threshold 用原文值，不要编造"）；
+- LLM 返回教材式 Skill JSON（name / category / core_idea / analysis_steps /
+  reference_data / win_rate_hint / common_pitfalls / when_not_to_use /
+  applicable_regimes），格式详见提取指南附录 A；
+- JSON 解析失败时原样返回原始内容（`parse_error=True`），不污染缓存；
+- 提取结果缓存在本地，用户可用以下零 API 接口审核：
+  - `modify_extracted_skill(index, field, value)`：修改字段，
+    支持点号嵌套（如 `reference_data.关键阈值`）；
+  - `remove_extracted_skill(index)`：删除不满意的条目；
+  - 换指导词重新调用 `extract_book_segment` 返工。
+
+### 阶段 2→3：保存与激活
+
+- `save_book_skills()`：审核通过的 Skill 写入规则索引库
+  （`data/skill_rules.jsonl`），状态为 **`pending`（不参与分析）**；
+  写入前统一经 `_convert_to_methodology_format` 转换为教材格式并补全
+  `trigger` / `signal` 字段（兼容旧格式规则）；
+- `activate_skill(rule_id)`：用户确认后激活，激活时自动
+  **reload Skill 知识库**，之后的分析立即生效；
+- 防重复：每本书按文件 MD5 记入 `data/book_registry.json`，
+  整本自动模式（`auto_extract=True`）下同一本书不会重复提取。
+
+### 对应测试
+
+以上每个环节的触发条件都有测试覆盖（`tests/test_skill_extraction.py`，50 条用例）：
+
+- 扫描版检测：全无文本 / 全文本 / 短文本（≤50 字符）/ 20% 边界 / 大书采样点 / 异常回退；
+- 路由决策：文本版绝不走 OCR、扫描版必须走 OCR、OCR 默认前 100 页、
+  Word 不做扫描检测、任何路径都必须经过清洗；
+- 清洗：各类页码、连续重复页眉、非连续重复保留、空行压缩；
+- 分段：marker 定位、end_marker 自动推断、非法段 ID、marker 未命中；
+- 提取：未加载书籍报错、只发送当前段原文、指导词透传、解析失败不污染缓存；
+- 管理：嵌套字段修改、越界保护、pending 保存（`auto_activate=False`）、
+  激活触发知识库 reload、书籍注册表持久化、解析回退、飞书导入、便捷函数。
+
+---
+
 ## 飞书文档同步
 
 系统支持将分析结果、跟踪记录、验证结果自动同步到飞书文档。
