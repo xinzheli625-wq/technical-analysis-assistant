@@ -399,7 +399,7 @@ class TestFeedbackOverwrite:
         from utils.feedback_loop import FeedbackLoop
         fl = FeedbackLoop()
 
-        r1 = fl.record_analysis({'symbol': 'AAPL'}, skills_used=['s1'])
+        fl.record_analysis({'symbol': 'AAPL'}, skills_used=['s1'])
         fl.records[0]['validated'] = True
         fl.records[0]['outcome'] = 'loss'
         fl.records[0]['actual_return_pct'] = -5.0

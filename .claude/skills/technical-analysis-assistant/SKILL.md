@@ -116,22 +116,45 @@ result = {
 
 **用户操作**：拖拽上传PDF/Word文件
 
-**Claude Code调用**：
+**必须按交互式分段流程执行**（详见 docs/SKILL_EXTRACTION_GUIDE.md，禁止整本批量提取）：
+
 ```python
 from api import assistant
-result = assistant().upload_skill_book("path/to/book.pdf")
+a = assistant()
+
+# 1. 加载书籍（自动检测扫描版并触发OCR，返回清洗后全文）
+result = a.upload_skill_book("path/to/book.pdf")
+
+# 2. Claude Code 阅读全文，提出分段方案 → 用户审批
+# 3. 用户确认后设置分段
+a.set_book_segments([
+    {'segment_id': 1, 'title': '趋势篇', 'start_marker': '第一章', 'note': '重点提取'},
+])
+
+# 4. 逐段提取（每段用户审核，可带自然语言指导）
+skills = a.extract_book_segment(1, '重点提取趋势线画法，threshold用原文值')
+
+# 5. 本地修改/删除（零API消耗）
+a.modify_extracted_skill(0, 'reference_data.关键阈值', 'RSI>70')
+a.remove_extracted_skill(2)
+
+# 6. 保存到 pending 队列 → 用户确认后激活
+a.save_book_skills()
 ```
 
 **展示给用户**：
 ```
-提取完成! 共 5 条Skill
+段1提取完成! 共 5 条Skill（待审核）
   - [a1b2c3d4] 量价突破确认法 (pending)
   - [e5f6g7h8] 相对强度选股法 (pending)
-  ...
 
-请审核每条Skill后激活：
-  assistant.activate_skill("a1b2c3d4")
+审核后激活：
+  assistant().activate_skill("a1b2c3d4")
 ```
+
+**重要**：新 Skill 的 trigger 指标名必须使用 SkillMatcher alias_map 可解析的名称
+（rsi_14、adx_value、close、sma20、pattern 等），否则永远不会触发。
+一次性自动模式（不推荐）：`upload_skill_book(path, auto_extract=True)`。
 
 ### 2.2 上传Skill（从自然语言）
 

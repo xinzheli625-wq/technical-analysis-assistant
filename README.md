@@ -303,7 +303,81 @@ Step 7: 结果输出
 Step 8: 模拟开仓（simulate=True 时）
 ```
 
-详见 [USER_GUIDE.md](USER_GUIDE.md)。
+详见 [USER_GUIDE.md](USER_GUIDE.md)。Claude Code 在此仓库工作时自动加载
+[CLAUDE.md](CLAUDE.md) 中的固定任务流纪律。
+
+---
+
+## 分析流程设计（维度 / Skill 触发 / 模型交互）
+
+### 核心分工原则
+
+```
+代码（确定性）                LLM（推理）
+─────────────                ─────────────
+精确计算所有指标数值     →    不计算任何数值
+确定性匹配 Skill 触发    →    在触发清单之上做四阶段推理
+R:R 强制评估、仓位计算   →    给出方向、置信度、关键价位
+```
+
+LLM 只做判断，不做计算——所有数值在送入 prompt 前已由数学公式确定。
+
+### 分析维度（Step 3，FeatureExtractor.extract_all）
+
+每次分析固定计算 12 个维度、50+ 指标，不按场景裁剪：
+
+| 维度 | 内容 |
+|------|------|
+| `raw` | 最新 K 线 OHLCV（供 Skill 条件直接引用 close/open 等） |
+| `trend` | SMA/EMA 全系（3-200 共 13 个周期）、ADX、SuperTrend、Ichimoku、Parabolic SAR |
+| `momentum` | RSI、MACD、KDJ、Stochastic、CCI、Williams %R、TSI、AO、UO、PPO、StochRSI |
+| `volatility` | ATR、Bollinger、Keltner、Donchian、历史波动率、Ulcer Index |
+| `volume` | 量比、OBV、VWAP、MFI、Chaikin Osc、Force Index、NVI/PVI |
+| `pattern` | 18 种形态检测、波段点、缺口分类、支撑阻力 |
+| `levels` | 枢轴点、斐波那契、最近支撑/阻力及距离 |
+| `divergence` | 价格-RSI/MACD/OBV 背离检测与强度 |
+| `trend_stage` | 趋势阶段（early/middle/late/fading/ranging）+ 极端偏离警告 |
+| `volatility_state` | squeeze/expansion 状态与带宽趋势 |
+| `momentum_accel` | RSI/MACD/价格加速度 |
+| `multi_timeframe` | 短/中/长期趋势一致性 |
+| `composite` | 综合状态与 1/5/20 日收益 |
+
+### Skill 触发机制（Step 4，SkillMatcher）
+
+触发是**确定性规则引擎**，不是 LLM 判断：
+
+1. 每条 Skill 携带结构化 `trigger`：`{conditions: [{indicator, operator, value|value_ref}], logic: AND|OR}`
+2. `indicator` 名称经 **alias_map** 映射到指标路径（如 `rsi_14` → `momentum.rsi.value`，
+   `close` → `raw.close`）；**alias_map 是 Skill 库与指标体系的契约**——
+   新提取的 Skill 必须使用可解析的指标名，否则该 Skill 永远不会触发
+   （`tests/test_bugfix_regression.py` 对规则库全部指标名做了解析性回归）。
+3. 条件评估输出三态：`triggered` / `near_triggered`（距阈值 ≤20%）/ `not_triggered`；
+   形态条件（`indicator: "pattern"`）按 `patterns_detected` 名称匹配。
+4. **环境适配**：基于 ADX + 趋势阶段 + 极端偏离判定 6 种市场环境，
+   在送入 LLM 前完成权重调整（如强趋势末期超买类 bearish Skill -0.3）。
+
+### 模型交互（Step 5，单轮全局分析）
+
+一次 LLM 调用完成四阶段，而非多轮拼装：
+
+- **System prompt**（SkillKnowledgeBase 动态构建）：场景相关类别的核心框架
+  （references 精炼版，约 30% 预算）+ 规则索引库中按环境/胜率筛选的具体规则
+  （约 60% 预算）+ 四阶段输出格式约束。
+- **User message**：价格摘要 + 精确指标文本 + Skill 触发清单
+  （triggered/near_triggered，含每条证据和调整后权重）。
+- **输出**：严格 JSON 的 Phase 1（指标盘点）→ Phase 2（Skill 应用）→
+  Phase 3（协同/冲突裁决 + 反转概率）→ Phase 4（结论/价位/风险），
+  要求每条结论引用具体数值、可追溯。
+
+### 可追溯性
+
+| 产物 | 位置 | 内容 |
+|------|------|------|
+| 流水线轨迹 | `data/pipeline_traces/` | 每次分析 8 步的状态、耗时、错误 |
+| 分析快照 | `data/snapshots/` | 指标签名 + 关键价位，供跟踪对比 |
+| 反馈记录 | `data/feedback_records.json` | 分析记录与验证结果 |
+| 模拟交易 | `data/simulation/trades.jsonl` | 计划→开仓→验证全生命周期 |
+| Skill 性能 | `data/skill_rules.jsonl` | 每条 Skill 的胜率（含分环境统计） |
 
 ---
 
@@ -402,6 +476,7 @@ mypy utils
 
 | 文档 | 内容 |
 |------|------|
+| [CLAUDE.md](CLAUDE.md) | Claude Code 固定任务流纪律（会话自动加载） |
 | [USER_GUIDE.md](USER_GUIDE.md) | 用户使用指南与标准操作流程（SOP） |
 | [INTERACTION_DESIGN.md](INTERACTION_DESIGN.md) | 人机交互设计 |
 | [docs/system-architecture.md](docs/system-architecture.md) | 系统架构详细说明 |
@@ -411,15 +486,20 @@ mypy utils
 
 ## 贡献与改进
 
+已完成：核心模块回归测试（Skill 触发解析、交易流转、提取流程）、全仓库 ruff 清零。
+
 当前已知改进方向：
 
-1. 补充核心模块单元测试（`FeatureExtractor`、`SkillMatcher`、`TradePlanner`、`Portfolio`）。
-2. 将 `api.py` 拆分为更小职责的模块。
-3. 将 `skill_knowledge.py` 中的超长 prompt 拆成独立模板文件。
-4. 引入配置系统，支持热加载。
+1. 将 `api.py` 拆分为更小职责的模块。
+2. 将 `skill_knowledge.py` 中的超长 prompt 拆成独立模板文件；
+   `_extract_core_framework` 目前是启发式行过滤，信息有损，可改为人工策划的框架摘要。
+3. 市场环境检测存在三处实现（`MarketRegimeDetector` / `SkillMatcher._detect_market_regime` /
+   `TradePlanner._detect_regime`），建议统一为单一事实源。
+4. mypy 目前为建议性检查（动态 dict 结构存量噪音较多），逐步收紧类型。
 5. 引入 logging 替代 print。
 6. 飞书集成：当前基于 `lark-cli` subprocess，后续可迁移到 Lark OpenAPI 以获得更稳定的错误处理。
-7. 补充端到端集成测试（含真实数据源与 LLM 的 mock）。
+7. 端到端集成测试（含真实数据源与 LLM 的 mock）。
+8. 可追溯性增强：分析时记录规则库版本哈希，保证历史分析可复现。
 
 ---
 
