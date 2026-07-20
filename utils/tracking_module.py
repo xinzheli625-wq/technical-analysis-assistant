@@ -10,8 +10,8 @@
 import json
 import os
 import uuid
-from typing import Dict, List, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -154,11 +154,13 @@ class TrackingModule:
         except Exception as e:
             fetch_error = str(e)
             # 回退：尝试从本地CSV读取（尝试多种文件名模式）
+            import glob as glob_module
             possible_paths = [
                 f'data/{symbol.replace(".", "_")}.csv',
                 f'data/muyuan_{symbol.split(".")[0]}.csv',
-                f'data/*{symbol.split(".")[0]}*.csv',
             ]
+            # glob 模式必须真正展开
+            possible_paths.extend(glob_module.glob(f'data/*{symbol.split(".")[0]}*.csv'))
             for local_csv in possible_paths:
                 if os.path.exists(local_csv):
                     try:
@@ -169,7 +171,7 @@ class TrackingModule:
                         df = df.set_index('date').sort_index()
                         print(f"[INFO] 使用本地CSV数据: {local_csv}")
                         break
-                    except Exception as e2:
+                    except Exception:
                         pass  # 尝试下一个文件
 
         if df is None:
@@ -277,7 +279,7 @@ class TrackingModule:
         2. akshare（A股）
         3. yfinance（美股/全球）
         """
-        from utils.data_source import download_daily, DataSourceError
+        from utils.data_source import DataSourceError, download_daily
 
         try:
             return download_daily(symbol, days=days, market=market)
@@ -344,16 +346,19 @@ class TrackingModule:
             if not isinstance(level, (int, float)):
                 status[name] = f"{level} (非数值)"
                 continue
+            if level == 0:
+                status[name] = "0 (无效价位)"
+                continue
 
             pct_dist = (current_price - level) / level * 100
 
-            # 判断方向：如果是阻力位，向上突破算触发；如果是支撑位，向下跌破算触发
-            if '阻力' in name or '暂缓' in name or '预警' in name or '止损' in name:
+            # 判断方向：阻力/目标在上方，价格上穿算触发；支撑/止损在下方，价格下穿算触发
+            if '阻力' in name or '暂缓' in name or '预警' in name or '目标' in name:
                 if current_price >= level:
                     status[name] = f"已突破 ({level}, 当前{current_price})"
                 else:
                     status[name] = f"未触发，距离+{abs(round(pct_dist, 2))}%"
-            elif '支撑' in name or '确认' in name or '目标' in name:
+            elif '支撑' in name or '确认' in name or '止损' in name:
                 if current_price <= level:
                     status[name] = f"已跌破 ({level}, 当前{current_price})"
                 else:

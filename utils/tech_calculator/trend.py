@@ -7,10 +7,12 @@
 - 动量趋势 (Price ROC, TRIX)
 """
 
-import pandas as pd
+from typing import Any, Dict
+
 import numpy as np
-from typing import Dict, Any
-from .registry import IndicatorRegistry, IndicatorMeta
+import pandas as pd
+
+from .registry import IndicatorMeta, IndicatorRegistry
 
 
 class TrendCalculator:
@@ -157,7 +159,7 @@ class TrendCalculator:
         """抛物线转向指标 (Parabolic SAR)"""
         high = df['high']
         low = df['low']
-        close = df['close']
+        df['close']
 
         sar = pd.Series(index=df.index, dtype=float)
         trend = pd.Series(index=df.index, dtype=int)  # 1=up, -1=down

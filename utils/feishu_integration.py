@@ -9,12 +9,12 @@
 依赖：lark-cli 已配置并登录
 """
 
-import subprocess
 import json
 import os
 import re
-from typing import Dict, List, Any, Optional
+import subprocess
 from datetime import datetime
+from typing import Any, Dict, Optional
 
 
 class FeishuIntegration:
@@ -372,7 +372,7 @@ class FeishuIntegration:
         Args:
             doc_url_or_token: 飞书文档URL或token
         """
-        print(f"📖 正在从飞书文档读取 Skill 内容...")
+        print("📖 正在从飞书文档读取 Skill 内容...")
         content = self.read_doc_content(doc_url_or_token)
 
         # 使用 EvolutionEngine 提取 Skill
@@ -526,7 +526,7 @@ class FeishuIntegration:
             try:
                 cached = self.read_doc_content(doc_token)
             except Exception:
-                print(f"[WARN] 从飞书获取文档内容失败")
+                print("[WARN] 从飞书获取文档内容失败")
                 return False
 
         # 找到 "## 后续跟踪" 标题
@@ -552,7 +552,7 @@ class FeishuIntegration:
             self.save_doc_cache(symbol, cached)
             print(f"[OK] 已更新 {symbol} 文档，新跟踪记录已放到最前")
         else:
-            print(f"[WARN] 覆盖文档失败，尝试用append模式")
+            print("[WARN] 覆盖文档失败，尝试用append模式")
             # 降级：用append模式追加到末尾
             self.append_to_stock_doc(symbol, '\n' + tracking_content)
 

@@ -1,6 +1,7 @@
 """Report generator - 全部通过大模型+Skill知识生成报告。"""
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from utils.llm_client import DeepSeekClient
 
 

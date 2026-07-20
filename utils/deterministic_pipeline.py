@@ -9,13 +9,12 @@
     result = dp.analyze("603773", days=100, simulate=True)
 """
 
-import os
 import json
-import traceback
-from typing import Dict, List, Any, Optional, Callable
-from datetime import datetime
+import os
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from typing import Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -289,7 +288,7 @@ class DeterministicPipeline:
         result.add_step(trace1)
 
         # === Step 2: 数据准备 ===
-        print(f"[Step 2/8] 数据准备...")
+        print("[Step 2/8] 数据准备...")
         df, trace2 = self._run_step("data_prepare", 2,
             self._download_data, symbol, days, market)
         result.add_step(trace2)
@@ -308,7 +307,7 @@ class DeterministicPipeline:
             # 继续执行（不致命），但标记警告
 
         # === Step 3: 指标计算 ===
-        print(f"[Step 3/8] 指标计算...")
+        print("[Step 3/8] 指标计算...")
         features, trace3 = self._run_step("indicator_compute", 3,
             self.extractor.extract_all, df)
         result.add_step(trace3)
@@ -320,7 +319,7 @@ class DeterministicPipeline:
             return result
 
         # === Step 4: Skill匹配 + 环境适配 ===
-        print(f"[Step 4/8] Skill匹配 + 环境适配...")
+        print("[Step 4/8] Skill匹配 + 环境适配...")
         match_result, trace4 = self._run_step("skill_match", 4,
             self.skill_matcher.match, features)
         result.add_step(trace4)
@@ -338,16 +337,24 @@ class DeterministicPipeline:
         print(f"  准触发Skill: {match_result.get('summary', {}).get('near_triggered_count', 0)}条")
 
         # === Step 5: LLM四阶段分析 ===
-        print(f"[Step 5/8] LLM四阶段分析...")
+        print("[Step 5/8] LLM四阶段分析...")
         # 使用MarketRegimeDetector获取真实confidence（避免硬编码）
+        regime_obj = None
+        regime_primary = market_regime
+        regime_confidence = 0.8
         try:
             regime_obj = self.regime_detector.detect(df)
             regime_primary = regime_obj.primary
             regime_confidence = regime_obj.confidence
         except Exception:
-            regime_primary = market_regime
-            regime_confidence = 0.8
+            pass  # 检测失败时用 matcher 的环境标签兜底
 
+        regime_info = {
+            'primary': regime_primary,
+            'secondary': getattr(regime_obj, 'secondary', '') if regime_obj else '',
+            'confidence': regime_confidence,
+            'indicators': getattr(regime_obj, 'indicators', {}) if regime_obj else {},
+        }
         analysis_input = {
             'symbol': symbol,
             'market': market,
@@ -356,12 +363,7 @@ class DeterministicPipeline:
             'input_type': 'api',
             'indicator_features': features,  # 传入已计算的指标，避免重复计算
             'indicator_text': self.extractor.format_for_llm(features) if features else '',
-            'market_regime': {
-                'primary': regime_primary,
-                'secondary': getattr(regime_obj, 'secondary', ''),
-                'confidence': regime_confidence,
-                'indicators': getattr(regime_obj, 'indicators', {}),
-            }
+            'market_regime': regime_info,
         }
         llm_result, trace5 = self._run_step("llm_analyze", 5,
             self.analyzer.run_full_analysis, analysis_input)
@@ -382,10 +384,12 @@ class DeterministicPipeline:
         # === Step 6: 交易计划生成（simulate=True时必须）===
         trade_plan = None
         if simulate:
-            print(f"[Step 6/8] 交易计划生成...")
+            print("[Step 6/8] 交易计划生成...")
+            # create_plan 期望 Phase1-4 顶层结构，传入 full_analysis 而非整个 analyzer 结果
+            full_analysis = llm_result.get('full_analysis', llm_result)
             trade_plan, trace6 = self._run_step("trade_plan", 6,
                 self.trade_planner.create_plan,
-                llm_result, features, symbol, symbol,
+                full_analysis, features, symbol, symbol,
                 match_result.get('triggered', []))
             result.add_step(trace6)
 
@@ -403,12 +407,12 @@ class DeterministicPipeline:
                     )
 
         # === Step 7: 结果输出 ===
-        print(f"[Step 7/8] 结果输出...")
+        print("[Step 7/8] 结果输出...")
         output = {
             'symbol': symbol,
             'market': market,
             'features': features,
-            'market_regime': market_regime,
+            'market_regime': regime_info,  # MarketRegimeDetector 的真实检测结果（含 confidence）
             'skill_match': match_result,
             'full_analysis': llm_result.get('full_analysis', {}),
             'indicator_summary': self.extractor.format_for_llm(features) if features else '',
@@ -420,12 +424,12 @@ class DeterministicPipeline:
 
         # === Step 8: 模拟开仓（simulate=True时必须）===
         if simulate and trade_plan:
-            print(f"[Step 8/8] 模拟开仓...")
+            print("[Step 8/8] 模拟开仓...")
 
             # 检查R:R是否合格（D级不执行）
             rr_grade = trade_plan.get('plan', {}).get('risk_metrics', {}).get('grade', 'D')
             if rr_grade == 'D':
-                print(f"  ⚠️ R/R Grade D，跳过开仓")
+                print("  ⚠️ R/R Grade D，跳过开仓")
                 trace8 = StepTrace(
                     step_name="simulation_open",
                     step_number=8,
@@ -439,11 +443,13 @@ class DeterministicPipeline:
                 result.add_step(trace8)
 
                 if position and 'error' not in position:
-                    # 保存交易记录
+                    # 保存交易记录（状态置为 open，否则自动验证永远找不到待验证交易）
+                    trade_plan['status'] = 'open'
                     self.trade_planner.save_plan(trade_plan)
                     print(f"  ✅ 模拟持仓已建立: {position.get('shares', 0)}股")
                 else:
-                    result.errors.append(f"模拟开仓失败: {position.get('error', 'unknown')}")
+                    err = position.get('error', 'unknown') if isinstance(position, dict) else 'open_position returned None'
+                    result.errors.append(f"模拟开仓失败: {err}")
 
         # === 完成 ===
         result.end_time = datetime.now().isoformat()
@@ -642,22 +648,19 @@ class DeterministicPipeline:
     # ========== 内部方法 ==========
 
     def _download_data(self, symbol: str, days: int, market: str) -> Optional[pd.DataFrame]:
-        """下载数据（统一入口）"""
-        from utils.data_source import download_daily, DataSourceError
-        try:
-            return download_daily(symbol, days=days, market=market)
-        except DataSourceError as e:
-            self.errors.append(str(e))
-            return None
-        except Exception as e:
-            self.errors.append(f"下载数据异常: {e}")
-            return None
+        """下载数据（统一入口）
+
+        异常直接抛出，由 _run_step 捕获并记录到 trace.error
+        （不要往 self.errors 写——那是 PipelineResult 的属性）。
+        """
+        from utils.data_source import download_daily
+        return download_daily(symbol, days=days, market=market)
 
     def _validate_skill_format(self, skill: Dict) -> bool:
         """校验Skill格式"""
         required = ['name', 'category', 'core_idea']
-        for field in required:
-            if field not in skill or not skill[field]:
+        for f_name in required:
+            if f_name not in skill or not skill[f_name]:
                 return False
         return True
 
@@ -685,16 +688,16 @@ class DeterministicPipeline:
         print(f"总步骤: {len(result.trace)} | 成功: {success_count} | 失败: {failed_count} | 跳过: {skipped_count}")
 
         if result.errors:
-            print(f"\n错误:")
+            print("\n错误:")
             for e in result.errors:
                 print(f"  ✗ {e}")
 
         if result.warnings:
-            print(f"\n警告:")
+            print("\n警告:")
             for w in result.warnings:
                 print(f"  ⚠ {w}")
 
-        print(f"\n步骤详情:")
+        print("\n步骤详情:")
         for s in result.trace:
             icon = "✓" if s.status == StepStatus.SUCCESS else "✗" if s.status == StepStatus.FAILED else "⊘"
             print(f"  {icon} Step {s.step_number}: {s.step_name} ({s.duration_ms:.0f}ms) {s.output_summary}")

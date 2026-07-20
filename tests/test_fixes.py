@@ -1,9 +1,6 @@
 """针对本次修复的回归测试"""
 
 import os
-import uuid
-import pandas as pd
-import pytest
 
 os.environ['DEEPSEEK_API_KEY'] = 'test-key'
 
@@ -133,7 +130,7 @@ class TestTrackingSnapshotFields:
             'skill_match_result': {'triggered': []},
             'market_regime': {'primary': 'trending_up'}
         }
-        sid = tm.save_analysis_snapshot('AAPL', result)
+        tm.save_analysis_snapshot('AAPL', result)
         snapshot = tm.get_latest_snapshot('AAPL')
 
         assert snapshot['verdict'] == 'BULLISH'

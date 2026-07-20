@@ -1,6 +1,7 @@
 """将OCR文本上传到飞书文档"""
 
 import os
+
 from utils.feishu_integration import FeishuIntegration
 
 feishu = FeishuIntegration()
@@ -34,6 +35,7 @@ print(f'Total batches: {len(batches)}')
 first_content = f"# {title}\n\n> 来源：《金融市场技术分析》（2010年版）\n> 总页数：488页\n> OCR生成时间：2026-05-26\n\n---\n\n{batches[0]}"
 
 import tempfile
+
 fd, abs_path = tempfile.mkstemp(suffix='.md', prefix='feishu_', dir='.')
 with os.fdopen(fd, 'w', encoding='utf-8') as f:
     f.write(first_content)
@@ -85,10 +87,11 @@ print(f'URL: https://www.feishu.cn/docx/{doc_token}')
 
 # Save doc token for later use
 import json
+
 cache_file = 'data/feishu_cache.json'
 with open(cache_file, 'r', encoding='utf-8') as f:
     cache = json.load(f)
 cache['book_ocr_doc_token'] = doc_token
 with open(cache_file, 'w', encoding='utf-8') as f:
     json.dump(cache, f, ensure_ascii=False, indent=2)
-print(f'Doc token saved to cache')
+print('Doc token saved to cache')

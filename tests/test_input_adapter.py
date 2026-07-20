@@ -1,7 +1,8 @@
 import os
-import pytest
+
 import pandas as pd
-from utils.input_adapter import normalize_excel, InputAdapter
+
+from utils.input_adapter import InputAdapter, normalize_excel
 
 # Mock API key for testing without actual API calls
 os.environ['DEEPSEEK_API_KEY'] = 'test-key'

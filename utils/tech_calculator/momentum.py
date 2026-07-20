@@ -10,10 +10,12 @@
 - Momentum
 """
 
-import pandas as pd
+from typing import Any, Dict
+
 import numpy as np
-from typing import Dict, Any
-from .registry import IndicatorRegistry, IndicatorMeta
+import pandas as pd
+
+from .registry import IndicatorMeta, IndicatorRegistry
 
 
 class MomentumCalculator:
@@ -262,7 +264,7 @@ class MomentumCalculator:
 
     def analyze_momentum(self, df: pd.DataFrame) -> Dict[str, Any]:
         """综合分析动量状态"""
-        close = df['close']
+        df['close']
 
         # RSI
         rsi = self.calc_rsi(df)

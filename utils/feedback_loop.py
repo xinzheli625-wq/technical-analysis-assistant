@@ -2,11 +2,10 @@
 
 import json
 import os
-import uuid
 import statistics
-from typing import Dict, List, Any, Optional
+import uuid
 from datetime import datetime
-
+from typing import Any, Dict, List, Optional
 
 RECORDS_FILE = 'data/feedback_records.json'
 STATS_FILE = 'data/statistics.json'
@@ -75,7 +74,16 @@ class FeedbackLoop:
             existing['target_price'] = target_price
             existing['stop_loss'] = stop_loss
             existing['timeframe_days'] = timeframe_days
-            existing['skills_used'] = skills_used or []
+            # 调用方未提供 skills_used 时保留旧值，不要清空（否则验证时无法归因）
+            if skills_used is not None:
+                existing['skills_used'] = skills_used
+            # 覆盖即重新分析：清除旧的验证状态，避免新分析按旧结果统计
+            for key in ('validated', 'validated_at', 'actual_return_pct', 'target_reached',
+                        'stop_hit', 'direction_correct', 'max_drawdown_pct', 'outcome',
+                        'technical_correctness', 'failure_reason', 'should_adjust_rule',
+                        'adjustment_type', 'notes', 'attribution_source'):
+                existing.pop(key, None)
+            existing['validated'] = False
             existing['updated_count'] = existing.get('updated_count', 0) + 1
             self._save_records()
             return {'record_id': record_id, 'is_update': True}
@@ -213,7 +221,7 @@ class FeedbackLoop:
                 rule_index.update_performance(skill_id, outcome, actual_return_pct, market_regime)
 
                 # 生成归因结论
-                stats = rule_index.get_stats()  # 获取更新后的统计
+                rule_index.get_stats()  # 获取更新后的统计
                 perf = rule.get('performance', {})
                 win_rate = perf.get('win_rate')
                 used_count = perf.get('used_count', 0)
@@ -221,10 +229,12 @@ class FeedbackLoop:
                 if not skill_correct:
                     if used_count < 5:
                         conclusion = "样本不足，暂不评价"
-                    elif win_rate and win_rate > 0.6:
+                    elif win_rate is not None and win_rate > 0.6:
                         conclusion = f"正常误差（历史胜率{win_rate:.0%}，本次属小概率事件）"
-                    else:
+                    elif win_rate is not None:
                         conclusion = f"持续表现不佳（胜率{win_rate:.0%}），建议review"
+                    else:
+                        conclusion = "暂无胜率数据，暂不评价"
 
                     # 检查是否环境不匹配
                     by_regime = perf.get('by_regime', {})

@@ -10,12 +10,11 @@
     columns: [open, high, low, close, volume], index: date
 """
 
-import os
 import logging
+import os
 from typing import Optional
 
 import pandas as pd
-
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +71,37 @@ def _load_local_csv(symbol: str, days: Optional[int] = None) -> Optional[pd.Data
         return None
 
 
+def _cn_prefix(code: str) -> str:
+    """根据 A 股代码推断交易所前缀（60/68/9→sh，00/30→sz，4/8→bj）"""
+    if code.startswith(('60', '68', '9')):
+        return 'sh'
+    if code.startswith(('00', '30')):
+        return 'sz'
+    if code.startswith(('4', '8')):
+        return 'bj'
+    return 'sh' if code.startswith('6') else 'sz'
+
+
+def _standardize_akshare_hist(df: pd.DataFrame, days: Optional[int] = None) -> Optional[pd.DataFrame]:
+    """标准化 akshare stock_zh_a_hist 的中文列输出"""
+    df = df.rename(columns={
+        '日期': 'date', '开盘': 'open', '收盘': 'close',
+        '最高': 'high', '最低': 'low', '成交量': 'volume',
+    })
+    required = ['date', 'open', 'high', 'low', 'close', 'volume']
+    if not all(c in df.columns for c in required):
+        logger.warning(f"akshare 返回列不完整: {list(df.columns)}")
+        return None
+
+    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+    df = df.dropna(subset=['date'])
+    for col in ['open', 'high', 'low', 'close', 'volume']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    df = df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
+    df = df.sort_values('date').set_index('date')
+    return df.tail(days) if days else df
+
+
 def _download_akshare(symbol: str, days: int) -> Optional[pd.DataFrame]:
     """通过 akshare 下载 A 股数据"""
     try:
@@ -80,9 +110,20 @@ def _download_akshare(symbol: str, days: int) -> Optional[pd.DataFrame]:
         logger.warning("akshare 未安装，跳过 A 股数据源")
         return None
 
+    code = symbol.split('.')[0]
+
+    # 优先东方财富接口（stock_zh_a_hist）：包含真实成交量（股），列名规范
     try:
-        code = symbol.split('.')[0]
-        prefix = 'sh' if symbol.endswith('.SH') else 'sz'
+        df = ak.stock_zh_a_hist(symbol=code, period='daily', adjust='qfq')
+        if df is not None and len(df) > 0:
+            return _standardize_akshare_hist(df, days)
+    except Exception as e:
+        logger.warning(f"akshare(eastmoney) 下载 {symbol} 失败: {e}")
+
+    # 回退腾讯接口（stock_zh_a_hist_tx）：注意其 amount 列为成交额而非成交量，
+    # 仅在东财接口不可用时兜底，量能指标口径可能与其他来源不一致
+    try:
+        prefix = 'sh' if symbol.endswith('.SH') else 'sz' if symbol.endswith('.SZ') else _cn_prefix(code)
         df = ak.stock_zh_a_hist_tx(symbol=f'{prefix}{code}')
         if df is None or len(df) == 0:
             return None
@@ -121,10 +162,11 @@ def _download_yfinance(symbol: str, days: int) -> Optional[pd.DataFrame]:
         if df is None or df.empty:
             return None
 
-        df.columns = [c.lower() for c in df.columns]
-        # yfinance 可能是 MultiIndex，取最低层级
+        # yfinance（>=0.2.x）单 ticker 也可能返回 MultiIndex 列 (Price, Ticker)，
+        # 必须先展开 MultiIndex 再统一小写，否则 tuple.lower() 直接抛异常
         if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(-1)
+            df.columns = df.columns.get_level_values(0)
+        df.columns = [str(c).lower() for c in df.columns]
 
         # 标准化列名
         column_mapping = {
@@ -207,9 +249,9 @@ def download_range(symbol: str, start_date: str, end_date: str,
         ticker = symbol.replace('.SH', '.SS').replace('.SZ', '.SZ')
         df = yf.download(ticker, start=start_date, end=end_date, progress=False)
         if df is not None and not df.empty:
-            df.columns = [c.lower() for c in df.columns]
             if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(-1)
+                df.columns = df.columns.get_level_values(0)
+            df.columns = [str(c).lower() for c in df.columns]
             df = df.rename(columns={'adj close': 'close'})
             if not isinstance(df.index, pd.DatetimeIndex):
                 df.index = pd.to_datetime(df.index)
@@ -234,15 +276,10 @@ def download_range(symbol: str, start_date: str, end_date: str,
                 adjust='qfq'
             )
             if df is not None and not df.empty:
-                df.columns = [c.lower().replace(' ', '_') for c in df.columns]
-                df['date'] = pd.to_datetime(df['date'], errors='coerce')
-                df = df.dropna(subset=['date'])
-                for col in ['open', 'high', 'low', 'close', 'volume']:
-                    if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
-                df = df.dropna(subset=['open', 'high', 'low', 'close'])
-                df = df.sort_values('date').set_index('date')
-                return df
+                # 中文列名必须显式映射（lower() 不会翻译中文）
+                df = _standardize_akshare_hist(df)
+                if df is not None:
+                    return df
         except Exception as e:
             logger.warning(f"akshare 范围下载失败: {e}")
 

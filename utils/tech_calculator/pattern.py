@@ -9,11 +9,13 @@
 - 旗形/三角旗
 """
 
-import pandas as pd
+from typing import Any, Dict, List, Tuple
+
 import numpy as np
+import pandas as pd
 from scipy.signal import argrelextrema
-from typing import Dict, List, Any, Tuple, Optional
-from .registry import IndicatorRegistry, IndicatorMeta
+
+from .registry import IndicatorMeta, IndicatorRegistry
 
 
 class PatternDetector:
@@ -585,7 +587,7 @@ class PatternDetector:
         recent = df.tail(lookback)
         highs = recent['high'].values
         lows = recent['low'].values
-        closes = recent['close'].values
+        recent['close'].values
 
         # 找所有向上跳空（今日最低价 > 昨日最高价）
         up_gaps = []
@@ -606,8 +608,8 @@ class PatternDetector:
             for down_idx, down_size in down_gaps:
                 if down_idx > up_idx + 2 and down_idx < up_idx + 10:  # 间隔2-10天
                     # 检查中间区域是否被孤立（没有价格回填缺口）
-                    island_high = max(highs[up_idx:down_idx])
-                    island_low = min(lows[up_idx:down_idx])
+                    max(highs[up_idx:down_idx])
+                    min(lows[up_idx:down_idx])
 
                     # 两个缺口之间的区域形成岛
                     if up_size > 2 and down_size > 2:
@@ -660,7 +662,7 @@ class PatternDetector:
             prev_low = lows[i - 1]
             curr_high = highs[i]
             curr_low = lows[i]
-            curr_open = recent['open'].iloc[i] if 'open' in recent.columns else closes[i]
+            recent['open'].iloc[i] if 'open' in recent.columns else closes[i]
 
             # 向上跳空：今日最低 > 昨日最高
             if curr_low > prev_high:
@@ -796,8 +798,8 @@ class PatternDetector:
             return {'detected': False, 'confidence': 0}
 
         closes = df['close']
-        highs = df['high']
-        lows = df['low']
+        df['high']
+        df['low']
 
         # 旗杆：前面一段的涨跌幅
         pole = closes.iloc[:-10]

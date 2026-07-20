@@ -9,8 +9,7 @@
 """
 
 import os
-from typing import Dict, List, Any, Optional
-
+from typing import Dict, List, Optional
 
 SKILLS_DIR = '.claude/skills/technical-analysis-core/references'
 

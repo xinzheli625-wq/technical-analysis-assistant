@@ -7,10 +7,12 @@
 4. 输出结构化分析结果
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
-from utils.llm_client import DeepSeekClient
+
 from utils.feature_extractor import FeatureExtractor
+from utils.llm_client import DeepSeekClient
 from utils.skill_matcher import SkillMatcher
 
 
@@ -92,7 +94,7 @@ class TechnicalAnalyzer:
 
         # 向后兼容：将新架构结果映射到旧字段
         p1 = full_result.get('phase1_indicator_inventory', {})
-        p2 = full_result.get('phase2_skill_application', {})
+        full_result.get('phase2_skill_application', {})
         p3 = full_result.get('phase3_synergy_conflict', {})
         p4 = full_result.get('phase4_conclusion', {})
 

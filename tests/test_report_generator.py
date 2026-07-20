@@ -1,4 +1,5 @@
 import os
+
 from utils.report_generator import ReportGenerator
 
 os.environ['DEEPSEEK_API_KEY'] = 'test-key'

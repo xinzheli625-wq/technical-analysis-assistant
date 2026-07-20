@@ -1,4 +1,5 @@
 import os
+
 from utils.evolution_engine import EvolutionEngine
 
 engine = EvolutionEngine()
@@ -24,7 +25,7 @@ if os.path.exists(output_path):
 print(f'Starting OCR: {pdf_path}')
 print(f'Total pages: {total_pages}, starting from page {start_page}')
 print(f'Batch size: {batch_size} pages/batch')
-print(f'DPI: 150')
+print('DPI: 150')
 print()
 
 file_mode = 'a' if start_page > 1 and existing_text else 'w'
@@ -56,6 +57,6 @@ with open(output_path, file_mode, encoding='utf-8') as f:
 
 print()
 final_size = os.path.getsize(output_path)
-print(f'OCR Complete!')
+print('OCR Complete!')
 print(f'Output: {output_path}')
 print(f'Size: {final_size / 1024 / 1024:.1f} MB')

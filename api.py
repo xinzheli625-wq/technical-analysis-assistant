@@ -10,19 +10,19 @@
     result = assistant.analyze_screenshot("chart.png")  # 截图分析
 """
 
-import os
 import json
-import yfinance as yf
-import pandas as pd
-from typing import Dict, List, Any, Optional
+import os
+from typing import Any, Dict, List, Optional
 
-from utils.feature_extractor import FeatureExtractor
-from utils.market_regime import MarketRegimeDetector
-from utils.technical_analyzer import TechnicalAnalyzer
-from utils.feedback_loop import FeedbackLoop
+import pandas as pd
+import yfinance as yf
+
 from utils.evolution_engine import EvolutionEngine
+from utils.feature_extractor import FeatureExtractor
+from utils.feedback_loop import FeedbackLoop
+from utils.market_regime import MarketRegimeDetector
 from utils.rule_index import RuleIndex
-from utils.llm_client import DeepSeekClient
+from utils.technical_analyzer import TechnicalAnalyzer
 
 
 class TechnicalAnalysisAssistant:
@@ -137,7 +137,7 @@ class TechnicalAnalysisAssistant:
         output = pipeline_result.final_output
         full = output.get('full_analysis', {})
         p1 = full.get('phase1_indicator_inventory', {})
-        p2 = full.get('phase2_skill_application', {})
+        full.get('phase2_skill_application', {})
         p3 = full.get('phase3_synergy_conflict', {})
         p4 = full.get('phase4_conclusion', {})
 
@@ -248,7 +248,7 @@ class TechnicalAnalysisAssistant:
 
         issues = tr.get('issues_found', [])
         if issues:
-            print(f"\n发现的问题:")
+            print("\n发现的问题:")
             for issue in issues:
                 print(f"  - {issue}")
 
@@ -334,7 +334,7 @@ class TechnicalAnalysisAssistant:
         self.feishu.prepend_to_tracking_section(symbol, content)
 
         doc_token = self.feishu.stock_docs.get(symbol)
-        print(f"[OK] 已同步到飞书文档（分析文档 -> 后续跟踪）")
+        print("[OK] 已同步到飞书文档（分析文档 -> 后续跟踪）")
         track_result['feishu_sync'] = {
             'doc_token': doc_token,
             'url': self.feishu.get_stock_doc_url(symbol) if doc_token else None
@@ -457,7 +457,7 @@ class TechnicalAnalysisAssistant:
 
             direction = p4.get('direction', 'N/A')
             confidence = p4.get('confidence', 'N/A')
-            lines.append(f"\n### 最终判断")
+            lines.append("\n### 最终判断")
             lines.append(f"- **方向**: {direction}")
             lines.append(f"- **置信度**: {confidence}")
 
@@ -862,12 +862,12 @@ class TechnicalAnalysisAssistant:
 
         # 展示前1000字预览
         preview = cleaned_text[:1000].replace('\n', ' ')
-        print(f"\n[DOC] 全文预览（前1000字）：")
+        print("\n[DOC] 全文预览（前1000字）：")
         print(f"{preview}...")
 
-        print(f"\n[TIP] 接下来请告诉我你想如何分段？")
-        print(f"   例如：'按章节分'、'合并前3章'、'跳过案例部分'")
-        print(f"   或直接用 assistant.set_book_segments([...]) 设置分段")
+        print("\n[TIP] 接下来请告诉我你想如何分段？")
+        print("   例如：'按章节分'、'合并前3章'、'跳过案例部分'")
+        print("   或直接用 assistant.set_book_segments([...]) 设置分段")
 
         return {
             'status': 'loaded',
@@ -1073,8 +1073,8 @@ class TechnicalAnalysisAssistant:
                 print(f"    备注: {seg['note']}")
 
         print("\n[TIP] 现在可以开始逐段提取：")
-        print(f"  assistant.extract_book_segment(1, '你的提取指导')")
-        print(f"  assistant.get_book_segment_text(1)")
+        print("  assistant.extract_book_segment(1, '你的提取指导')")
+        print("  assistant.get_book_segment_text(1)")
 
         return structure
 
@@ -1084,7 +1084,7 @@ class TechnicalAnalysisAssistant:
 
         流程同 upload_skill_book：清洗全文 → Claude Code 语义分段 → 用户确认 → 逐段提取
         """
-        print(f"[BOOK] 正在从飞书文档导入 Skill...")
+        print("[BOOK] 正在从飞书文档导入 Skill...")
         print(f"   文档: {doc_url_or_token}")
 
         from utils.feishu_integration import FeishuIntegration
@@ -1112,11 +1112,11 @@ class TechnicalAnalysisAssistant:
         self._pending_book_structure = None
 
         preview = cleaned_content[:1000].replace('\n', ' ')
-        print(f"\n[DOC] 全文预览（前1000字）：")
+        print("\n[DOC] 全文预览（前1000字）：")
         print(f"{preview}...")
 
-        print(f"\n[TIP] 接下来请告诉我你想如何分段？")
-        print(f"   然后用 assistant.set_book_segments([...]) 设置分段")
+        print("\n[TIP] 接下来请告诉我你想如何分段？")
+        print("   然后用 assistant.set_book_segments([...]) 设置分段")
 
         return {
             'status': 'loaded',
@@ -1366,7 +1366,7 @@ function filter() {{
             market_regime=market_regime
         )
 
-        print(f"[OK] 验证完成!")
+        print("[OK] 验证完成!")
         print(f"   实际收益: {actual_return_pct}%")
         print(f"   结果: {result.get('outcome')}")
         print(f"   市场环境: {market_regime}")
@@ -1387,7 +1387,7 @@ function filter() {{
                     'outcome': result.get('outcome'),
                     'market_regime': market_regime,
                 })
-                print(f"[DOC] 已同步验证结果到飞书")
+                print("[DOC] 已同步验证结果到飞书")
             except Exception as e:
                 print(f"[WARN]  飞书同步失败: {e}")
 
@@ -1434,7 +1434,7 @@ function filter() {{
         print(f"持有天数: {outcome.get('holding_days', 'N/A')}")
 
         if attribution:
-            print(f"\nSkill归因:")
+            print("\nSkill归因:")
             print(f"  ✓ 正确: {attribution.get('correct_count', 0)} 个")
             for s in attribution.get('correct_skills', [])[:5]:
                 print(f"    - {s.get('name', 'Unknown')} ({s.get('direction', '')})")
@@ -1443,7 +1443,7 @@ function filter() {{
                 print(f"    - {s.get('name', 'Unknown')} ({s.get('direction', '')})")
 
         if lessons:
-            print(f"\n教训:")
+            print("\n教训:")
             for i, lesson in enumerate(lessons[:5], 1):
                 print(f"  {i}. {lesson}")
 

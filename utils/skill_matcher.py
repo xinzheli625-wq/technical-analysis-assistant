@@ -7,10 +7,7 @@
 4. 只把 triggered + near_triggered 传给 LLM
 """
 
-import json
-import os
-from typing import Dict, List, Any, Optional
-
+from typing import Any, Dict, List, Optional
 
 NEAR_TRIGGER_PCT = 0.20  # 准触发阈值：距离目标值差20%
 
@@ -24,88 +21,150 @@ class SkillMatcher:
         self._init_alias_map()
 
     def _init_alias_map(self):
-        """初始化指标别名映射（避免每次调用重建）"""
+        """初始化指标别名映射（避免每次调用重建）
+
+        注意：这里的别名必须覆盖两类名称：
+        1. SEGMENT_EXTRACT_SYSTEM_PROMPT 中教给提取模型的指标命名规范
+        2. skill_rules.jsonl 中存量规则实际使用的指标名
+        缺失别名会导致条件评估为 unknown，Skill 永远不会触发。
+        """
         self.alias_map = {
+            # 原始价格（extract_all 的 raw 段）
+            'close': 'raw.close',
+            'open': 'raw.open',
+            'high': 'raw.high',
+            'low': 'raw.low',
+            'volume': 'raw.volume',
+            # 趋势方向（蜡烛图类 Skill 常用 indicator='trend' 表示前置趋势）
+            'trend': 'composite.mid_trend',
+            # 动量
             'rsi': 'momentum.rsi.value',
             'rsi_14': 'momentum.rsi.value',
             'macd': 'momentum.macd.line',
             'macd_line': 'momentum.macd.line',
             'macd_histogram': 'momentum.macd.histogram',
             'macd_signal': 'momentum.macd.signal',
+            'macd_trend': 'momentum.macd.trend',
             'cci': 'momentum.cci',
             'williams_r': 'momentum.williams_r',
             'kdj_k': 'momentum.kdj.k',
             'kdj_d': 'momentum.kdj.d',
+            'kdj_j': 'momentum.kdj.j',
             'stoch_k': 'momentum.stochastic.k',
             'stoch_d': 'momentum.stochastic.d',
+            'stochastic_k': 'momentum.stochastic.k',
+            'stochastic_d': 'momentum.stochastic.d',
+            'momentum': 'momentum.momentum',
             'tsi': 'momentum.tsi',
             'ao': 'momentum.awesome_oscillator',
             'uo': 'momentum.ultimate_oscillator',
             'ppo': 'momentum.ppo.value',
             'stoch_rsi': 'momentum.stoch_rsi.value',
+            # 趋势
             'adx': 'trend.trend_strength.adx',
             'adx_value': 'trend.trend_strength.adx',
+            'adx_signal': 'trend.trend_strength.adx_signal',
             'sma20': 'trend.moving_averages.sma20',
             'sma50': 'trend.moving_averages.sma50',
             'sma200': 'trend.moving_averages.sma200',
             'ema12': 'trend.moving_averages.ema12',
             'ema26': 'trend.moving_averages.ema26',
             'price': 'trend.price',
+            'price_vs_sma20_pct': 'trend.moving_averages.price_vs_sma20_pct',
+            'price_vs_sma200_pct': 'trend.moving_averages.price_vs_sma200_pct',
+            'sma20_vs_sma50': 'trend.moving_averages.sma20_vs_sma50',
+            'roc_12': 'trend.momentum.roc_12',
             'supertrend_direction': 'trend.supertrend.direction',
+            'ichimoku_price_vs_kijun': 'trend.ichimoku.price_vs_kijun',
+            # 波动率
             'atr': 'volatility.atr.value',
+            'atr_value': 'volatility.atr.value',
             'atr_pct': 'volatility.atr.pct_of_price',
             'bollinger_upper': 'volatility.bollinger.upper',
             'bollinger_lower': 'volatility.bollinger.lower',
             'bollinger_middle': 'volatility.bollinger.middle',
             'bollinger_percent_b': 'volatility.bollinger.percent_b',
             'bollinger_bandwidth': 'volatility.bollinger.bandwidth',
+            'bollinger_position': 'volatility.bollinger.position',
             'hist_vol': 'volatility.historical_volatility',
+            'historical_volatility': 'volatility.historical_volatility',
+            'ulcer_index': 'volatility.ulcer_index',
+            # 量能
             'volume_ratio': 'volume.volume_ratio',
+            'volume_trend': 'volume.volume_trend',
             'obv': 'volume.obv.value',
+            'obv_value': 'volume.obv.value',
             'obv_trend': 'volume.obv.trend',
             'vwap': 'volume.vwap',
             'mfi': 'volume.mfi',
             'force_index': 'volume.force_index',
             'chaikin_osc': 'volume.chaikin_oscillator',
+            'chaikin_oscillator': 'volume.chaikin_oscillator',
+            # 背离
             'div_count': 'divergence.count',
             'div_bearish_count': 'divergence.bearish_count',
             'div_bullish_count': 'divergence.bullish_count',
             'div_primary': 'divergence.primary_signal',
+            'divergence_count': 'divergence.count',
+            'divergence_bearish_count': 'divergence.bearish_count',
+            'divergence_bullish_count': 'divergence.bullish_count',
+            'divergence_primary_signal': 'divergence.primary_signal',
+            # 趋势阶段
             'trend_stage': 'trend_stage.stage',
             'trend_stage_confidence': 'trend_stage.stage_confidence',
             'adx_change_10d': 'trend_stage.adx_change_10d_pct',
+            'adx_change_10d_pct': 'trend_stage.adx_change_10d_pct',
             'ma_deviation_20': 'trend_stage.ma_deviation_20',
             'ma_deviation_50': 'trend_stage.ma_deviation_50',
+            'ma_deviation_change_10d': 'trend_stage.ma_deviation_change_10d',
             'price_acceleration': 'trend_stage.price_acceleration',
             'extreme_deviation': 'trend_stage.extreme_deviation',
+            # 波动率状态
             'vol_state': 'volatility_state.state',
+            'volatility_state': 'volatility_state.state',
             'squeeze': 'volatility_state.squeeze',
             'expansion': 'volatility_state.expansion',
+            'volatility_squeeze': 'volatility_state.squeeze',
+            'volatility_expansion': 'volatility_state.expansion',
             'squeeze_to_expansion_alert': 'volatility_state.squeeze_to_expansion_alert',
+            # 动量加速度
             'rsi_change_1d': 'momentum_accel.rsi_change_1d',
             'rsi_change_5d': 'momentum_accel.rsi_change_5d',
             'rsi_acceleration': 'momentum_accel.rsi_acceleration',
             'macd_hist_accel': 'momentum_accel.macd_hist_acceleration',
+            'macd_hist_acceleration': 'momentum_accel.macd_hist_acceleration',
             'price_accel': 'momentum_accel.price_acceleration',
+            'price_acceleration_state': 'momentum_accel.price_acceleration',
             'momentum_direction': 'momentum_accel.momentum_direction',
             'momentum_signal': 'momentum_accel.signal',
+            # 多时间框架
             'mtf_alignment': 'multi_timeframe.alignment',
             'mtf_short_trend': 'multi_timeframe.short_trend',
             'mtf_mid_trend': 'multi_timeframe.mid_trend',
             'mtf_long_trend': 'multi_timeframe.long_trend',
             'mtf_short_turning': 'multi_timeframe.short_turning',
             'mtf_long_intact': 'multi_timeframe.long_trend_intact',
+            'mtf_long_trend_intact': 'multi_timeframe.long_trend_intact',
+            # 形态
             'pattern_count': 'pattern.pattern_count',
             'swing_peaks': 'pattern.swing_points.peaks_count',
             'swing_troughs': 'pattern.swing_points.troughs_count',
-            'gap_count': 'pattern.gaps.gap_count',
+            # 综合
             'composite_short_trend': 'composite.short_trend',
             'composite_mid_trend': 'composite.mid_trend',
             'price_position_60d': 'composite.price_position_60d',
             'return_1d': 'composite.returns.1d',
             'return_5d': 'composite.returns.5d',
             'return_20d': 'composite.returns.20d',
+            'price_change_pct': 'composite.returns.1d',
         }
+
+        # 额外周期均线（extract_all 的 moving_averages 段，数据足够时才存在）
+        for p in (3, 4, 5, 9, 10, 13, 21, 40, 65, 90):
+            self.alias_map[f'sma{p}'] = f'trend.moving_averages.sma{p}'
+            self.alias_map[f'price_vs_sma{p}_pct'] = f'trend.moving_averages.price_vs_sma{p}_pct'
+        # price_vs_sma65 是 sma65 偏离度的简写（与 price_vs_sma65_pct 同义）
+        self.alias_map['price_vs_sma65'] = 'trend.moving_averages.price_vs_sma65_pct'
 
     def _load_active_rules(self):
         """加载所有 active 状态的 Skill"""
@@ -189,7 +248,7 @@ class SkillMatcher:
         """检测当前市场环境"""
         trend_stage = self._get_indicator_value(features, 'trend_stage') or ''
         adx = self._get_indicator_value(features, 'adx') or 0
-        mtf = self._get_indicator_value(features, 'mtf_alignment') or ''
+        self._get_indicator_value(features, 'mtf_alignment') or ''
         extreme_dev = self._get_indicator_value(features, 'extreme_deviation') or False
 
         # 强趋势末期 + 极端偏离
@@ -273,6 +332,14 @@ class SkillMatcher:
             operator = cond.get('operator', '>')
             target_value = cond.get('value')
             value_ref = cond.get('value_ref')  # 引用另一个指标
+
+            # 形态触发：{"indicator": "pattern", "value": "Double Bottom"}
+            # 在 patterns_detected 列表中按名称匹配，而不是当数值指标解析
+            if indicator in ('pattern', 'pattern_detected'):
+                cond_result = self._evaluate_pattern_condition(
+                    features, operator, target_value)
+                results.append(cond_result)
+                continue
 
             # 获取当前值
             current_value = self._get_indicator_value(features, indicator)
@@ -388,15 +455,60 @@ class SkillMatcher:
 
         return result
 
+    def _evaluate_pattern_condition(self, features: Dict, operator: str,
+                                    target) -> Dict:
+        """评估形态触发条件（indicator='pattern'/'pattern_detected'）
+
+        在 pattern.patterns_detected 列表中按名称匹配 target 形态。
+        operator='=' / '==' → 形态被检测到；operator='!=' → 形态未被检测到。
+        """
+        pattern_list = features.get('pattern', {}).get('patterns_detected', [])
+        target_norm = str(target or '').lower().replace(' ', '_').replace('-', '_')
+
+        matched = None
+        if target_norm and isinstance(pattern_list, list):
+            for p in pattern_list:
+                if not isinstance(p, dict):
+                    continue
+                pname = p.get('name', '').lower().replace(' ', '_').replace('-', '_')
+                if target_norm in pname or pname in target_norm:
+                    matched = p
+                    break
+
+        if operator in ('!=', '<>'):
+            satisfied = matched is None
+        else:
+            satisfied = matched is not None
+
+        result = {
+            'current_value': matched.get('name') if matched else None,
+            'target_value': target,
+            'operator': operator,
+            'gap_pct': 0 if satisfied else 100,
+        }
+        if satisfied:
+            result['status'] = 'triggered'
+            if matched:
+                conf = matched.get('confidence', 'N/A')
+                result['evidence'] = f"检测到形态 {matched.get('name')}（置信度{conf}）✓"
+            else:
+                result['evidence'] = f"未检测到形态 {target} ✓"
+        else:
+            result['status'] = 'not_triggered'
+            result['evidence'] = f"未检测到形态 {target}"
+        return result
+
     def _evaluate_string_condition(self, current: str, operator: str,
                                     target) -> Dict:
         """评估字符串条件（如趋势方向、阶段等）"""
         target_str = str(target).lower() if target else ''
         current_str = str(current).lower() if current else ''
 
-        # 字符串相等判断
+        # 字符串相等判断（宽松匹配：相等或互相包含，兼容 'up'/'uptrend' 等写法）
         if operator in ('=', '=='):
-            satisfied = current_str == target_str
+            satisfied = (current_str == target_str
+                         or (current_str and target_str
+                             and (target_str in current_str or current_str in target_str)))
         elif operator == '!=':
             satisfied = current_str != target_str
         else:
@@ -438,20 +550,9 @@ class SkillMatcher:
 
         # 直接匹配
         if indicator_name in features:
-            val = features[indicator_name]
-            if isinstance(val, (int, float)):
-                return float(val)
-            if isinstance(val, bool):
-                return 1.0 if val else 0.0
-            if isinstance(val, str):
-                # 先尝试解析为数值，不行就保留字符串
-                try:
-                    return float(val)
-                except ValueError:
-                    return val
-            if isinstance(val, list):
-                # 列表长度作为数值（如pattern数量）
-                return float(len(val))
+            converted = self._to_comparable(features[indicator_name])
+            if converted is not None:
+                return converted
 
         # 多级路径匹配
         parts = indicator_name.split('.')
@@ -464,18 +565,9 @@ class SkillMatcher:
                 break
 
         if current is not None:
-            if isinstance(current, (int, float)):
-                return float(current)
-            if isinstance(current, bool):
-                return 1.0 if current else 0.0
-            if isinstance(current, str):
-                # 先尝试解析为数值，不行就保留字符串（用于字符串比较）
-                try:
-                    return float(current)
-                except ValueError:
-                    return current
-            if isinstance(current, list):
-                return float(len(current))
+            converted = self._to_comparable(current)
+            if converted is not None:
+                return converted
 
         # 使用实例级别的别名映射（避免每次调用重建）
         if indicator_name in self.alias_map:
@@ -499,6 +591,29 @@ class SkillMatcher:
             if any(kp in indicator_lower for kp in known_patterns):
                 return 0.0
 
+        return None
+
+    @staticmethod
+    def _to_comparable(val):
+        """把 feature 值统一转为可比较的数值/字符串
+
+        必须处理 numpy 标量（np.bool_ / np.integer / np.floating），
+        它们不是 Python 内置 bool/int/float 的子类，否则会漏判为 None。
+        """
+        import numpy as np
+        if isinstance(val, (bool, np.bool_)):
+            return 1.0 if val else 0.0
+        if isinstance(val, (int, float, np.integer, np.floating)):
+            return float(val)
+        if isinstance(val, str):
+            # 先尝试解析为数值，不行就保留字符串（用于字符串比较）
+            try:
+                return float(val)
+            except ValueError:
+                return val
+        if isinstance(val, list):
+            # 列表长度作为数值（如pattern数量）
+            return float(len(val))
         return None
 
     def calculate_risk_metrics(self, features: Dict, target_price: float = None,
@@ -556,11 +671,12 @@ class SkillMatcher:
 
         return result
 
-    def format_for_llm(self, match_result: Dict) -> str:
+    @staticmethod
+    def format_for_llm(match_result: Dict) -> str:
         """将匹配结果格式化为 LLM-friendly 文本"""
         lines = []
         summary = match_result.get('summary', {})
-        lines.append(f"## Skill 触发状态总览")
+        lines.append("## Skill 触发状态总览")
         lines.append(f"- 总Skill数: {summary.get('total_skills', 0)}")
         lines.append(f"- 已触发: {summary.get('triggered_count', 0)}")
         lines.append(f"- 准触发: {summary.get('near_triggered_count', 0)}")
@@ -592,7 +708,7 @@ class SkillMatcher:
                 for c in s.get('conditions', []):
                     if c.get('status') == 'near':
                         lines.append(f"  - {c.get('evidence', '')}")
-                lines.append(f"  注意: 接近阈值，若继续发展可能触发")
+                lines.append("  注意: 接近阈值，若继续发展可能触发")
 
         # 未触发的 Skill（作为排除项）
         not_trig = match_result.get('not_triggered', [])

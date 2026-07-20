@@ -7,13 +7,13 @@
 4. 新指标可以通过formula_generator自动注册
 """
 
+from .levels import LevelCalculator
+from .momentum import MomentumCalculator
+from .pattern import PatternDetector
 from .registry import IndicatorRegistry
 from .trend import TrendCalculator
-from .momentum import MomentumCalculator
 from .volatility import VolatilityCalculator
 from .volume import VolumeCalculator
-from .pattern import PatternDetector
-from .levels import LevelCalculator
 
 __all__ = [
     'IndicatorRegistry',

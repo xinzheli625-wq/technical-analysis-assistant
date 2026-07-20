@@ -7,18 +7,18 @@
 3. 输出标准化JSON，直接注入LLM Prompt
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+import pandas as pd
 
 from utils.tech_calculator import (
-    TrendCalculator,
+    LevelCalculator,
     MomentumCalculator,
+    PatternDetector,
+    TrendCalculator,
     VolatilityCalculator,
     VolumeCalculator,
-    PatternDetector,
-    LevelCalculator,
 )
 
 
@@ -70,6 +70,7 @@ class FeatureExtractor:
             raise ValueError(f"Need at least 60 data points, got {len(df)}")
 
         return {
+            'raw': self._extract_raw(df),
             'trend': self._extract_trend(df),
             'momentum': self._extract_momentum(df),
             'volatility': self._extract_volatility(df),
@@ -82,6 +83,22 @@ class FeatureExtractor:
             'momentum_accel': self._extract_momentum_accel(df),
             'multi_timeframe': self._extract_multi_timeframe(df),
             'composite': self._extract_composite(df),
+        }
+
+    def _extract_raw(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """最新一根K线的原始 OHLCV（供 Skill 触发条件直接引用 close/open/high/low/volume）"""
+        latest = df.iloc[-1]
+        prev = df.iloc[-2]
+        close = float(latest['close'])
+        prev_close = float(prev['close'])
+        return {
+            'open': round(float(latest['open']), 4),
+            'high': round(float(latest['high']), 4),
+            'low': round(float(latest['low']), 4),
+            'close': round(close, 4),
+            'volume': float(latest['volume']),
+            'prev_close': round(prev_close, 4),
+            'change_pct': round((close / prev_close - 1) * 100, 2) if prev_close else None,
         }
 
     def _extract_trend(self, df: pd.DataFrame) -> Dict[str, Any]:
@@ -136,6 +153,15 @@ class FeatureExtractor:
             result['moving_averages']['sma200'] = round(sma200.iloc[-1], 2)
             result['moving_averages']['price_vs_sma200_pct'] = round((latest / sma200.iloc[-1] - 1) * 100, 2)
 
+        # 额外周期均线（Skill 触发条件常用，如 sma5/sma9/sma65）
+        for period in (3, 4, 5, 9, 10, 13, 21, 40, 65, 90):
+            if len(df) >= period:
+                sma = self.trend.calc_sma(df, period)
+                val = self._safe_latest(sma)
+                if val:
+                    result['moving_averages'][f'sma{period}'] = round(val, 2)
+                    result['moving_averages'][f'price_vs_sma{period}_pct'] = round((latest / val - 1) * 100, 2)
+
         if st is not None:
             result['supertrend'] = {
                 'value': round(st['supertrend'].iloc[-1], 2),
@@ -160,7 +186,7 @@ class FeatureExtractor:
     def _extract_momentum(self, df: pd.DataFrame) -> Dict[str, Any]:
         """提取动量维度指标"""
         close = df['close']
-        latest = close.iloc[-1]
+        close.iloc[-1]
 
         # RSI
         rsi = self.momentum.calc_rsi(df, 14)
@@ -610,7 +636,7 @@ class FeatureExtractor:
         # 均线偏离度
         sma20 = self.trend.calc_sma(df, 20)
         sma50 = self.trend.calc_sma(df, 50)
-        sma200 = self.trend.calc_sma(df, 200) if len(df) >= 200 else None
+        self.trend.calc_sma(df, 200) if len(df) >= 200 else None
 
         dev_20 = (latest / self._safe_latest(sma20) - 1) * 100 if self._safe_latest(sma20) else None
         dev_50 = (latest / self._safe_latest(sma50) - 1) * 100 if self._safe_latest(sma50) else None
@@ -688,7 +714,7 @@ class FeatureExtractor:
         2. 波动率收缩/扩张判断
         3. 历史波动率变化
         """
-        close = df['close']
+        df['close']
 
         if len(df) < 40:
             return {'error': 'Need at least 40 days for volatility state'}

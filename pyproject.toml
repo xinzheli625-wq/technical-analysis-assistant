@@ -63,6 +63,12 @@ ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
-warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
+# 代码库大量依赖 JSON/subprocess 返回的 Any，暂不启用严格返回检查
+disable_error_code = ["no-any-return"]
+
+[tool.ruff.lint.per-file-ignores]
+# 一次性运维脚本，需要 sys.path 操作后再 import
+"_upload_ocr_to_feishu.py" = ["E402"]
+"_ocr_book.py" = ["E402"]

@@ -7,15 +7,22 @@
 - 环境变量: DEEPSEEK_API_KEY
 """
 
-import os
 import base64
 import json
-from typing import Dict, List, Any, Optional
-from openai import OpenAI
+import os
+from typing import Any, Dict, List, Optional
 
+from openai import OpenAI
 
 BASE_URL = "https://api.deepseek.com/v1"
 MODEL_DEFAULT = "deepseek-v4-pro"
+
+
+def _ensure_dict(obj: Any) -> Dict[str, Any]:
+    """json.loads 可能返回 list/标量，统一包装成 dict，避免调用方 .get() 崩溃"""
+    if isinstance(obj, dict):
+        return obj
+    return {'data': obj}
 
 
 def _safe_parse_json(text: str) -> Dict[str, Any]:
@@ -43,7 +50,7 @@ def _safe_parse_json(text: str) -> Dict[str, Any]:
     # 尝试1：直接解析（strict=False更宽松）
     for strict in [True, False]:
         try:
-            return json.loads(text, strict=strict)
+            return _ensure_dict(json.loads(text, strict=strict))
         except (json.JSONDecodeError, ValueError):
             pass
 
@@ -52,7 +59,7 @@ def _safe_parse_json(text: str) -> Dict[str, Any]:
     if extracted:
         for strict in [True, False]:
             try:
-                return json.loads(extracted, strict=strict)
+                return _ensure_dict(json.loads(extracted, strict=strict))
             except (json.JSONDecodeError, ValueError):
                 pass
 
@@ -61,7 +68,7 @@ def _safe_parse_json(text: str) -> Dict[str, Any]:
     if fixed != text:
         for strict in [True, False]:
             try:
-                return json.loads(fixed, strict=strict)
+                return _ensure_dict(json.loads(fixed, strict=strict))
             except (json.JSONDecodeError, ValueError):
                 pass
 
@@ -70,7 +77,7 @@ def _safe_parse_json(text: str) -> Dict[str, Any]:
         if text.startswith('"') and text.endswith('"'):
             unquoted = json.loads(text)
             if isinstance(unquoted, str):
-                return json.loads(unquoted)
+                return _ensure_dict(json.loads(unquoted))
     except (json.JSONDecodeError, ValueError):
         pass
 
@@ -357,8 +364,7 @@ class DeepSeekClient:
         # 3. Skill触发清单（由SkillMatcher系统精确匹配生成）
         if skill_match_result:
             from utils.skill_matcher import SkillMatcher
-            formatter = SkillMatcher()
-            skill_text = formatter.format_for_llm(skill_match_result)
+            skill_text = SkillMatcher.format_for_llm(skill_match_result)
             parts.append(f"## Skill匹配结果（系统精确匹配）\n{skill_text}")
         else:
             parts.append(

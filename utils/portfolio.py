@@ -16,8 +16,8 @@
 
 import json
 import os
-from typing import Dict, List, Any, Optional
 from datetime import datetime
+from typing import Dict, List
 
 
 class Portfolio:
@@ -44,7 +44,9 @@ class Portfolio:
             try:
                 with open(self.portfolio_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                self.cash = data.get('cash', self.initial_capital)
+                # cash 保存在 capital 段下（与 _save 的结构对应）
+                self.cash = data.get('capital', {}).get(
+                    'cash', data.get('cash', self.initial_capital))
                 self.positions = data.get('positions', {})
                 self.trade_history = data.get('trade_history', [])
                 self.equity_curve = data.get('equity_curve', [])
@@ -70,7 +72,7 @@ class Portfolio:
                 'cash': self.cash,
             },
             'positions': self.positions,
-            'trade_history': self.trade_history[-50:],  # 保留最近50条
+            'trade_history': self.trade_history,  # 全量保存，避免统计失真
             'equity_curve': self.equity_curve,
             'exposure': self._calculate_exposure(),
             'updated_at': datetime.now().isoformat(),
@@ -238,7 +240,6 @@ class Portfolio:
         """
         date = date or datetime.now().strftime('%Y-%m-%d')
         total_unrealized = 0
-        stop_hits = []
 
         for trade_id, pos in self.positions.items():
             symbol = pos['symbol']
@@ -421,7 +422,7 @@ class Portfolio:
             d1 = datetime.strptime(entry_date, '%Y-%m-%d')
             d2 = datetime.strptime(exit_date or datetime.now().strftime('%Y-%m-%d'), '%Y-%m-%d')
             return (d2 - d1).days
-        except:
+        except Exception:
             return 0
 
     def get_open_positions(self) -> List[Dict]:

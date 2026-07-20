@@ -10,8 +10,8 @@
 
 import json
 import os
-from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 
 from utils.position_sizer import PositionSizer
 
@@ -38,26 +38,28 @@ class TradePlanner:
             完整交易计划字典
         """
         p4 = analysis_result.get('phase4_conclusion', {})
-        p1 = analysis_result.get('phase1_indicator_inventory', {})
+        analysis_result.get('phase1_indicator_inventory', {})
 
-        # 1. 提取关键价位
-        key_levels = p4.get('key_levels', {})
-        entry_price = key_levels.get('trigger', features.get('trend', {}).get('price', 0))
-        target_price = key_levels.get('target')
-        stop_price = key_levels.get('stop_loss')
+        # 1. 提取关键价位（兼容 key_levels 子结构和 phase4 顶层字段；None 值回退）
+        key_levels = p4.get('key_levels') or {}
+        entry_price = (key_levels.get('trigger')
+                       or features.get('trend', {}).get('price', 0))
+        target_price = key_levels.get('target') or p4.get('target_price')
+        stop_price = key_levels.get('stop_loss') or p4.get('stop_loss')
 
-        if entry_price <= 0:
+        if not entry_price or entry_price <= 0:
             return {'error': 'Invalid entry price'}
 
-        # 2. 提取分析结论
+        # 2. 提取分析结论（phase4 输出字段是 direction，兼容旧的 final_judgment）
         self.symbol = symbol
-        direction = p4.get('final_judgment', 'NEUTRAL')
+        direction = p4.get('direction') or p4.get('final_judgment', 'NEUTRAL')
         confidence = p4.get('confidence', 50)
         trend_nature = p4.get('trend_nature', 'unknown')
-        trend_stage = p4.get('trend_stage', 'unknown')
+        p4.get('trend_stage', 'unknown')
 
-        # 3. 选择止损策略
-        stop_strategy = self._select_stop_loss(features, stop_price)
+        # 3. 选择止损策略（按方向计算：多头止损在下方，空头止损在上方）
+        plan_direction = 'long' if 'BULLISH' in direction else 'short' if 'BEARISH' in direction else 'neutral'
+        stop_strategy = self._select_stop_loss(features, stop_price, plan_direction)
 
         # 4. 计算仓位
         position = self._calculate_position(
@@ -102,7 +104,7 @@ class TradePlanner:
             'status': 'planned',
 
             'plan': {
-                'direction': 'long' if 'BULLISH' in direction else 'short' if 'BEARISH' in direction else 'neutral',
+                'direction': plan_direction,
                 'confidence': confidence,
 
                 'entry': {
@@ -117,7 +119,8 @@ class TradePlanner:
                     'type': 'fixed',
                     'price': actual_target,
                     'partial_exits': self._suggest_partial_exits(
-                        entry_price, actual_target, stop_strategy['price']
+                        entry_price, actual_target, stop_strategy['price'],
+                        plan_direction
                     ),
                 },
 
@@ -143,12 +146,16 @@ class TradePlanner:
         }
 
     def _select_stop_loss(self, features: Dict,
-                          llm_stop_price: Optional[float]) -> Dict:
+                          llm_stop_price: Optional[float],
+                          direction: str = 'long') -> Dict:
         """选择最优止损策略
 
         优先级:
         1. ATR倍数止损（primary，最可靠）
         2. 固定价格止损（fallback，来自LLM建议）
+
+        方向：多头止损在入场价下方（price - N*ATR），
+        空头止损在入场价上方（price + N*ATR）。
         """
         price = features.get('trend', {}).get('price', 0)
         atr = features.get('volatility', {}).get('atr', {}).get('value', 0)
@@ -167,10 +174,11 @@ class TradePlanner:
             atr_multiplier = 1.5
             reason = 'early_or_middle_stage'
 
-        # 计算动态止损
+        # 计算动态止损（按方向）
+        is_short = direction == 'short'
         dynamic_stop = None
         if price > 0 and atr > 0:
-            dynamic_stop = price - atr * atr_multiplier
+            dynamic_stop = price + atr * atr_multiplier if is_short else price - atr * atr_multiplier
 
         # 选择最优止损
         if dynamic_stop and dynamic_stop > 0:
@@ -198,8 +206,8 @@ class TradePlanner:
                 'note': '使用LLM建议的固定止损（无ATR数据）',
             }
         else:
-            # 没有止损数据，用默认5%
-            default_stop = price * 0.95 if price > 0 else 0
+            # 没有止损数据，用默认5%（空头为上方5%）
+            default_stop = (price * 1.05 if is_short else price * 0.95) if price > 0 else 0
             return {
                 'type': 'default',
                 'price': round(default_stop, 2),
@@ -304,12 +312,14 @@ class TradePlanner:
         }
 
     def _suggest_partial_exits(self, entry: float, target: float,
-                                stop: float) -> List[Dict]:
+                                stop: float, direction: str = 'long') -> List[Dict]:
         """建议分批止盈方案"""
         if entry <= 0 or target <= 0:
             return []
 
         distance = abs(target - entry)
+        # 第二目标：多头在上方 1.5 倍距离，空头在下方
+        second_target = (entry - distance * 1.5) if direction == 'short' else (entry + distance * 1.5)
 
         # 方案1: 50%在目标位，50%移动止盈
         return [
@@ -321,7 +331,7 @@ class TradePlanner:
             },
             {
                 'ratio': 0.5,
-                'price': round(entry + distance * 1.5, 2),
+                'price': round(second_target, 2),
                 'reason': 'trailing_profit',
                 'note': '剩余50%使用移动止盈，让利润奔跑',
             },
@@ -346,7 +356,7 @@ class TradePlanner:
         trend_stage = features.get('trend_stage', {}).get('stage', '')
         adx = features.get('trend', {}).get('trend_strength', {}).get('adx', 0) or 0
         extreme_dev = features.get('trend_stage', {}).get('extreme_deviation', False)
-        mtf = features.get('multi_timeframe', {}).get('alignment', '')
+        features.get('multi_timeframe', {}).get('alignment', '')
 
         if adx > 40 and trend_stage in ('late', 'fading') and extreme_dev:
             return 'trending_up_late_extreme'
@@ -363,7 +373,7 @@ class TradePlanner:
     def _generate_recommendation(self, rr_metrics: Dict, confidence: float,
                                   regime: str) -> str:
         """生成交易建议"""
-        rr = rr_metrics.get('risk_reward_ratio', 0)
+        rr_metrics.get('risk_reward_ratio', 0)
         grade = rr_metrics.get('grade', 'D')
 
         parts = []

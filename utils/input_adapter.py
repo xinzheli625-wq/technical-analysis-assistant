@@ -1,6 +1,7 @@
 """Input adapter: normalizes all input types. Screenshot analysis uses LLM Vision + Skill context."""
 
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 
 
@@ -27,6 +28,15 @@ class InputAdapter:
                     break
         return mapping
 
+    @staticmethod
+    def _to_float(value) -> Optional[float]:
+        """安全转 float，NaN/非法值返回 None（避免 nan 静默污染统计）"""
+        try:
+            v = float(value)
+            return v if v == v else None  # NaN != NaN
+        except (TypeError, ValueError):
+            return None
+
     def normalize_excel(self, df: pd.DataFrame, symbol: str, market: str = "US",
                         timeframe: str = "daily") -> Dict[str, Any]:
         """Convert Excel/CSV to standard format."""
@@ -37,15 +47,20 @@ class InputAdapter:
         if 'close' not in mapping:
             raise ValueError(f"Could not detect close price column. Columns: {list(df.columns)}")
 
+        # 按日期排序，保证 records[-1] 是最新一根K线
+        df = df.copy()
+        df[mapping['date']] = pd.to_datetime(df[mapping['date']], errors='coerce')
+        df = df.sort_values(mapping['date'])
+
         records = []
         for _, row in df.iterrows():
             record = {
                 'date': str(row[mapping.get('date', 'date')]),
-                'open': float(row[mapping.get('open', mapping.get('close'))]) if mapping.get('open') else None,
-                'high': float(row[mapping.get('high', mapping.get('close'))]) if mapping.get('high') else None,
-                'low': float(row[mapping.get('low', mapping.get('close'))]) if mapping.get('low') else None,
-                'close': float(row[mapping['close']]),
-                'volume': float(row[mapping.get('volume', 'volume')]) if mapping.get('volume') else None,
+                'open': self._to_float(row[mapping['open']]) if mapping.get('open') else None,
+                'high': self._to_float(row[mapping['high']]) if mapping.get('high') else None,
+                'low': self._to_float(row[mapping['low']]) if mapping.get('low') else None,
+                'close': self._to_float(row[mapping['close']]),
+                'volume': self._to_float(row[mapping['volume']]) if mapping.get('volume') else None,
             }
             records.append(record)
 

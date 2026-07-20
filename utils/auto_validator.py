@@ -10,8 +10,8 @@
 
 import json
 import os
-from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -69,6 +69,8 @@ class AutoValidator:
         if not trade:
             return {'error': f'Trade {trade_id} not found'}
 
+        if trade.get('status') == 'planned':
+            return {'error': f'Trade {trade_id} is planned but not opened (模拟开仓未执行)'}
         if trade.get('status') != 'open':
             return {'error': f'Trade {trade_id} already validated'}
 
@@ -179,20 +181,23 @@ class AutoValidator:
     def _download_price_data(self, symbol: str,
                               start_date: str) -> Optional[pd.DataFrame]:
         """下载验证期间价格数据（统一入口）"""
-        from utils.data_source import download_range, DataSourceError
-        from datetime import datetime, timedelta
+        from datetime import datetime
+
+        from utils.data_source import DataSourceError, download_range
 
         end_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-        market = 'cn' if symbol.endswith(('.SH', '.SZ')) else 'us'
+        # 与 trade_planner/position_sizer 保持一致：.SH/.SZ 后缀或 6 位纯数字都视为 A 股
+        code = symbol.split('.')[0]
+        market = 'cn' if symbol.endswith(('.SH', '.SZ')) or (code.isdigit() and len(code) == 6) else 'us'
 
         try:
             return download_range(symbol, start_date=start_date,
                                   end_date=end_date, market=market)
         except DataSourceError as e:
-            logger.warning(f"自动验证下载数据失败: {e}")
+            print(f"[WARN] 自动验证下载数据失败: {e}")
             return None
         except Exception as e:
-            logger.warning(f"自动验证下载数据异常: {e}")
+            print(f"[WARN] 自动验证下载数据异常: {e}")
             return None
 
     def _download_eastmoney(self, symbol: str, start: str, end: str) -> Optional[pd.DataFrame]:
@@ -285,15 +290,13 @@ class AutoValidator:
         exit_price = closes[-1]  # 默认以最后收盘价出场
         exit_date = price_path[-1]['date']
         exit_reason = 'time_exit'
+        target_reached_date = None
 
         # 判断方向
         if direction == 'long':
-            pnl_pct = ((exit_price - entry_price) / entry_price) * 100
-
             # 目标达成检查
             max_high = max(highs)
             target_reached = max_high >= target_price if target_price > 0 else False
-            target_reached_date = None
             if target_reached:
                 for p in price_path:
                     if p['high'] >= target_price:
@@ -305,17 +308,20 @@ class AutoValidator:
             stop_hit_intraday = min_low <= stop_price if stop_price > 0 else False
             stop_hit_close = any(p['close'] <= stop_price for p in price_path) if stop_price > 0 else False
 
-            # 如果盘中触发止损，以止损价作为出场价（保守估计）
+            # 如果收盘触发止损，以止损价作为出场价（保守估计）
             if stop_hit_close:
                 exit_reason = 'stop_hit'
                 exit_price = stop_price
 
         else:  # short
-            pnl_pct = ((entry_price - exit_price) / entry_price) * 100
-
             # 空头目标：价格跌到目标价以下
             min_low = min(lows)
             target_reached = min_low <= target_price if target_price > 0 else False
+            if target_reached:
+                for p in price_path:
+                    if p['low'] <= target_price:
+                        target_reached_date = p['date']
+                        break
 
             # 空头止损：价格涨到止损价以上
             max_high = max(highs)
@@ -331,6 +337,12 @@ class AutoValidator:
             exit_reason = 'target_reached'
             # 实际以验证日收盘价出场更合理
             # exit_price = target_price
+
+        # 出场价确定后再计算盈亏（避免止损出场但盈亏按收盘价算的不一致）
+        if direction == 'long':
+            pnl_pct = ((exit_price - entry_price) / entry_price) * 100
+        else:
+            pnl_pct = ((entry_price - exit_price) / entry_price) * 100
 
         # 计算最大回撤和最大盈利
         if direction == 'long':
@@ -431,7 +443,7 @@ class AutoValidator:
         """更新Portfolio"""
         try:
             from utils.portfolio import Portfolio
-            portfolio = Portfolio()
+            portfolio = Portfolio(portfolio_file=self.portfolio_file)
 
             exit_price = outcome.get('exit_price', 0)
             exit_reason = outcome.get('exit_reason', 'unknown')

@@ -1,9 +1,11 @@
 """Volatility Dimension - 波动维度计算"""
 
-import pandas as pd
+from typing import Any, Dict
+
 import numpy as np
-from typing import Dict, Any
-from .registry import IndicatorRegistry, IndicatorMeta
+import pandas as pd
+
+from .registry import IndicatorMeta, IndicatorRegistry
 
 
 class VolatilityCalculator:

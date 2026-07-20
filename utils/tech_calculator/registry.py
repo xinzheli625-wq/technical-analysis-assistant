@@ -6,9 +6,9 @@
 
 import json
 import os
-from typing import Dict, List, Any, Callable, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional
 
 
 @dataclass

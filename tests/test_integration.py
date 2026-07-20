@@ -1,5 +1,7 @@
 import os
+
 import pandas as pd
+
 from utils.input_adapter import normalize_excel
 
 os.environ['DEEPSEEK_API_KEY'] = 'test-key'

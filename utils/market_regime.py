@@ -3,10 +3,10 @@
 基于技术指标自动判断当前市场状态，用于动态选择相关Skill。
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Any
 from dataclasses import dataclass
+from typing import Any, Dict, List
+
+import pandas as pd
 
 
 @dataclass
@@ -25,9 +25,7 @@ class MarketRegimeDetector:
     """
 
     def __init__(self):
-        from utils.tech_calculator import (
-            TrendCalculator, MomentumCalculator, VolatilityCalculator
-        )
+        from utils.tech_calculator import MomentumCalculator, TrendCalculator, VolatilityCalculator
         self.trend = TrendCalculator()
         self.momentum = MomentumCalculator()
         self.volatility = VolatilityCalculator()
@@ -48,7 +46,7 @@ class MarketRegimeDetector:
         # 2. 均线排列
         sma20 = self.trend.calc_sma(df, 20)
         sma50 = self.trend.calc_sma(df, 50)
-        ema20 = self.trend.calc_ema(df, 20)
+        self.trend.calc_ema(df, 20)
 
         ma_aligned_up = (latest > sma20.iloc[-1] > sma50.iloc[-1]) if not pd.isna(sma50.iloc[-1]) else False
         ma_aligned_down = (latest < sma20.iloc[-1] < sma50.iloc[-1]) if not pd.isna(sma50.iloc[-1]) else False

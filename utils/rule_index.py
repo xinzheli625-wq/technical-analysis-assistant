@@ -10,8 +10,8 @@
 import json
 import os
 import uuid
-from typing import Dict, List, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 RULES_FILE = 'data/skill_rules.jsonl'
 RULES_INDEX_FILE = 'data/skill_rules_index.json'
@@ -41,6 +41,8 @@ class RuleIndex:
                     continue
                 try:
                     rule = json.loads(line)
+                    if not isinstance(rule, dict) or 'rule_id' not in rule:
+                        continue  # 跳过缺 rule_id 的异常行，避免整库加载中断
                     self._rules.append(rule)
                     # 构建索引
                     cat = rule.get('category', 'general')
@@ -189,12 +191,13 @@ class RuleIndex:
         """
         result = {}
         for cat in categories:
-            # 1. 该分类下适用当前状态的规则
+            # 1. 该分类下适用当前状态的规则（get_rules 的 regime 过滤已包含通用规则）
             regime_rules = self.get_rules(category=cat, status='active', regime=regime)
-            # 2. 通用规则（未指定适用状态的）
+            # 2. 通用规则（未指定适用状态的）——需按 rule_id 去重，避免与 regime_rules 重复
+            seen_ids = {r['rule_id'] for r in regime_rules}
             general_rules = [
                 r for r in self.get_rules(category=cat, status='active')
-                if not r.get('applicable_regimes')
+                if not r.get('applicable_regimes') and r['rule_id'] not in seen_ids
             ]
 
             combined = regime_rules + general_rules
@@ -227,12 +230,13 @@ class RuleIndex:
             regime: 当前市场状态（如'trending_up'），None表示不筛选
         """
         all_rules = []
+        boosts = {}  # rule_id -> 优先级加成（不写入规则对象，避免污染持久化数据）
         for cat in categories:
             # 1. 适用当前状态的规则（权重加成）
             if regime:
                 regime_rules = self.get_rules(category=cat, status='active', regime=regime)
                 for r in regime_rules:
-                    r['_priority_boost'] = 0.2  # 适用状态加0.2优先级
+                    boosts[r['rule_id']] = 0.2  # 适用状态加0.2优先级
                 all_rules.extend(regime_rules)
 
             # 2. 通用规则
@@ -241,7 +245,7 @@ class RuleIndex:
                 if not r.get('applicable_regimes')
             ]
             for r in general_rules:
-                r['_priority_boost'] = 0.0
+                boosts.setdefault(r['rule_id'], 0.0)
             all_rules.extend(general_rules)
 
         if not all_rules:
@@ -261,7 +265,7 @@ class RuleIndex:
             perf = r.get('performance', {})
             win_rate = perf.get('win_rate') or 0.5
             weight = r.get('weight', 1.0)
-            boost = r.get('_priority_boost', 0)
+            boost = boosts.get(r['rule_id'], 0)
             return weight * win_rate + boost
 
         unique_rules.sort(key=sort_key, reverse=True)
@@ -340,8 +344,15 @@ class RuleIndex:
             by_regime = perf.get('by_regime', {})
             if by_regime:
                 lines.append("分环境胜率：")
-                for regime, rate in by_regime.items():
-                    lines.append(f"  - {regime}：{rate*100:.0f}%")
+                for regime, stats in by_regime.items():
+                    # by_regime 结构为 {regime: {'used': n, 'wins': n, 'losses': n}}
+                    if isinstance(stats, dict):
+                        wins = stats.get('wins', 0)
+                        total = stats.get('wins', 0) + stats.get('losses', 0)
+                        if total > 0:
+                            lines.append(f"  - {regime}：{wins / total * 100:.0f}%")
+                    elif isinstance(stats, (int, float)):
+                        lines.append(f"  - {regime}：{stats * 100:.0f}%")
 
         return '\n'.join(lines)
 

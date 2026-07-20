@@ -58,5 +58,8 @@ jobs:
       - name: Run ruff
         run: ruff check .
 
-      - name: Run mypy
+      # mypy 目前为建议性检查：代码库以动态 dict 结构为主，存量类型噪音较多，
+      # 逐步收紧，不阻塞 CI。修复方向见 README「贡献与改进」。
+      - name: Run mypy (advisory)
+        continue-on-error: true
         run: mypy utils

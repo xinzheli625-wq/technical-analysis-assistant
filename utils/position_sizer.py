@@ -7,8 +7,7 @@
 4. 置信度调整法：根据预测置信度调整风险敞口
 """
 
-import math
-from typing import Dict, Optional
+from typing import Dict
 
 
 class PositionSizer:
@@ -56,27 +55,33 @@ class PositionSizer:
             return {'error': 'Stop loss must differ from entry price'}
 
         shares = int(risk_amount / risk_per_share)
-
-        # 确保至少最小交易单位
-        if shares < min_lot_size:
-            shares = min_lot_size
-
-        notional = shares * entry
-        position_pct = (notional / capital) * 100
+        warnings = []
 
         # 限制最大仓位
         max_notional = capital * (max_position_pct / 100.0)
-        if notional > max_notional:
+        if shares * entry > max_notional:
             shares = int(max_notional / entry)
-            # 调整为最小交易单位的整数倍
+            # 向下取整为最小交易单位的整数倍（不再补回，避免突破上限）
             shares = (shares // min_lot_size) * min_lot_size
-            if shares < min_lot_size:
-                shares = min_lot_size
-            notional = shares * entry
-            position_pct = (notional / capital) * 100
-            risk_amount = shares * risk_per_share
 
-        return {
+        if shares < min_lot_size:
+            # 连最小交易单位都买不到：若因上限或资金不足，明确报错而不是静默突破
+            if min_lot_size * entry > max_notional:
+                return {'error': '最小交易单位的名义金额超过单标的仓位上限，无法开仓'}
+            if min_lot_size * entry > capital:
+                return {'error': '最小交易单位的名义金额超过总资金，无法开仓'}
+            shares = min_lot_size
+            warnings.append('风险预算不足一个最小交易单位，已按最小单位开仓（实际风险高于设定值）')
+
+        notional = shares * entry
+        if notional > capital:
+            return {'error': '名义金额超过总资金，无法开仓'}
+
+        position_pct = (notional / capital) * 100
+        # 按最终股数重算实际风险（保证返回值与实际一致）
+        risk_amount = shares * risk_per_share
+
+        result = {
             'shares': shares,
             'notional': round(notional, 2),
             'position_pct': round(position_pct, 2),
@@ -85,16 +90,20 @@ class PositionSizer:
             'risk_pct': round((risk_amount / capital) * 100, 2),
             'strategy': 'fixed_risk',
         }
+        if warnings:
+            result['warnings'] = warnings
+        return result
 
     @staticmethod
     def volatility_adjusted(capital: float, risk_pct: float, entry: float,
                             atr: float, atr_multiplier: float = 2.0,
                             max_position_pct: float = 10.0,
-                            min_lot_size: int = 1) -> Dict:
+                            min_lot_size: int = 1,
+                            direction: str = 'long') -> Dict:
         """波动率调整法
 
         高ATR时自动减小仓位，低ATR时可适当增加。
-        止损 = entry - atr * atr_multiplier
+        止损：多头 = entry - atr * atr_multiplier；空头 = entry + atr * atr_multiplier
 
         Args:
             capital: 总资金
@@ -103,11 +112,12 @@ class PositionSizer:
             atr: ATR值
             atr_multiplier: ATR倍数（默认2.0）
             max_position_pct: 单标的最大仓位百分比
+            direction: long/short（决定止损方向）
         """
         if atr <= 0:
             return {'error': 'ATR must be positive'}
 
-        stop = entry - atr * atr_multiplier
+        stop = entry + atr * atr_multiplier if direction == 'short' else entry - atr * atr_multiplier
         result = PositionSizer.fixed_risk(capital, risk_pct, entry, stop,
                                            max_position_pct, min_lot_size=min_lot_size)
         if 'error' not in result:
@@ -217,9 +227,10 @@ class PositionSizer:
         """
         p4 = analysis.get('phase4_conclusion', {})
         confidence = p4.get('confidence', 50)
-        entry = p4.get('key_levels', {}).get('trigger', 0)
-        stop = p4.get('key_levels', {}).get('stop_loss', 0)
-        target = p4.get('key_levels', {}).get('target', 0)
+        key_levels = p4.get('key_levels') or {}
+        entry = key_levels.get('trigger') or 0
+        stop = key_levels.get('stop_loss') or 0
+        target = key_levels.get('target') or 0
 
         if entry <= 0:
             return {'error': 'Invalid entry price'}

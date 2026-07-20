@@ -7,11 +7,13 @@
 - Price channels
 """
 
-import pandas as pd
+from typing import Any, Dict, List
+
 import numpy as np
+import pandas as pd
 from sklearn.cluster import DBSCAN
-from typing import Dict, List, Any
-from .registry import IndicatorRegistry, IndicatorMeta
+
+from .registry import IndicatorMeta, IndicatorRegistry
 
 
 class LevelCalculator:
