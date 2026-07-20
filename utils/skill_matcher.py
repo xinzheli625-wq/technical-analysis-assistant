@@ -12,23 +12,19 @@ from typing import Any, Dict, List, Optional
 NEAR_TRIGGER_PCT = 0.20  # 准触发阈值：距离目标值差20%
 
 
-class SkillMatcher:
-    """Skill 条件匹配器 - 确定性计算"""
+def build_alias_map() -> Dict[str, str]:
+    """构建指标别名映射（模块级单一事实源）
 
-    def __init__(self):
-        self.rules: List[Dict] = []
-        self._load_active_rules()
-        self._init_alias_map()
+    skill_knowledge 的提取 prompt 也从这里生成指标白名单，
+    保证"提取时教给 LLM 的命名"与"匹配时可解析的名称"永不漂移。
+    """
+    # 延迟构建：实际字典在 _ALIAS_MAP_BUILDER 中（见文件底部）
+    return _build_alias_map_impl().copy()
 
-    def _init_alias_map(self):
-        """初始化指标别名映射（避免每次调用重建）
 
-        注意：这里的别名必须覆盖两类名称：
-        1. SEGMENT_EXTRACT_SYSTEM_PROMPT 中教给提取模型的指标命名规范
-        2. skill_rules.jsonl 中存量规则实际使用的指标名
-        缺失别名会导致条件评估为 unknown，Skill 永远不会触发。
-        """
-        self.alias_map = {
+def _build_alias_map_impl() -> Dict[str, str]:
+    """别名映射的完整定义（由 build_alias_map 导出）"""
+    alias_map = {
             # 原始价格（extract_all 的 raw 段）
             'close': 'raw.close',
             'open': 'raw.open',
@@ -159,12 +155,35 @@ class SkillMatcher:
             'price_change_pct': 'composite.returns.1d',
         }
 
-        # 额外周期均线（extract_all 的 moving_averages 段，数据足够时才存在）
-        for p in (3, 4, 5, 9, 10, 13, 21, 40, 65, 90):
-            self.alias_map[f'sma{p}'] = f'trend.moving_averages.sma{p}'
-            self.alias_map[f'price_vs_sma{p}_pct'] = f'trend.moving_averages.price_vs_sma{p}_pct'
-        # price_vs_sma65 是 sma65 偏离度的简写（与 price_vs_sma65_pct 同义）
-        self.alias_map['price_vs_sma65'] = 'trend.moving_averages.price_vs_sma65_pct'
+    # 额外周期均线（extract_all 的 moving_averages 段，数据足够时才存在）
+    for p in (3, 4, 5, 9, 10, 13, 21, 40, 65, 90):
+        alias_map[f'sma{p}'] = f'trend.moving_averages.sma{p}'
+        alias_map[f'price_vs_sma{p}_pct'] = f'trend.moving_averages.price_vs_sma{p}_pct'
+    # price_vs_sma65 是 sma65 偏离度的简写（与 price_vs_sma65_pct 同义）
+    alias_map['price_vs_sma65'] = 'trend.moving_averages.price_vs_sma65_pct'
+
+    return alias_map
+
+
+class SkillMatcher:
+    """Skill 条件匹配器 - 确定性计算"""
+
+    def __init__(self):
+        self.rules: List[Dict] = []
+        self._load_active_rules()
+        self._init_alias_map()
+
+    def _init_alias_map(self):
+        """初始化指标别名映射（取自模块级单一事实源 build_alias_map）
+
+        注意：这里的别名必须覆盖两类名称：
+        1. SEGMENT_EXTRACT_SYSTEM_PROMPT 中教给提取模型的指标命名规范
+        2. skill_rules.jsonl 中存量规则实际使用的指标名
+        缺失别名会导致条件评估为 unknown，Skill 永远不会触发。
+        """
+        self.alias_map = build_alias_map()
+
+
 
     def _load_active_rules(self):
         """加载所有 active 状态的 Skill"""
@@ -175,11 +194,15 @@ class SkillMatcher:
         except Exception:
             self.rules = []
 
-    def match(self, features: Dict[str, Any]) -> Dict[str, List[Dict]]:
+    def match(self, features: Dict[str, Any],
+              market_regime: Optional[str] = None) -> Dict[str, List[Dict]]:
         """匹配所有 Skill 条件（支持环境适配权重）
 
         Args:
             features: FeatureExtractor 输出的所有指标数值
+            market_regime: 外部（MarketRegimeDetector.to_matcher_regime）提供的
+                环境标签。传入后不再使用内置启发式检测——全系统统一环境口径。
+                不传则回退到内置启发式（独立使用时的兼容路径）。
 
         Returns:
             {
@@ -192,8 +215,9 @@ class SkillMatcher:
         near_triggered = []
         not_triggered = []
 
-        # 检测当前市场环境
-        market_regime = self._detect_market_regime(features)
+        # 检测当前市场环境（优先使用外部统一检测结果）
+        if market_regime is None:
+            market_regime = self._detect_market_regime(features)
 
         for rule in self.rules:
             trigger_def = rule.get('trigger')
@@ -309,15 +333,39 @@ class SkillMatcher:
                     adjustment = -0.2
                     reason.append("震荡市中趋势跟踪skill降权")
 
+        # 规则3: 历史胜率微调（不淘汰 Skill，只让 LLM 看到并轻微影响排序）
+        # 样本 >=5 才启用：胜率 50% 为中性，每偏离 10% 调整 ±0.04，上限 ±0.2
+        perf = detail.get('performance', {})
+        win_rate = perf.get('win_rate')
+        used = perf.get('used_count', 0)
+        if win_rate is not None and used >= 5:
+            perf_adj = max(-0.2, min(0.2, (win_rate - 0.5) * 0.4))
+            if abs(perf_adj) >= 0.02:
+                adjustment += perf_adj
+                reason.append(
+                    f"历史胜率{win_rate * 100:.0f}%（{used}次验证）权重{'+' if perf_adj > 0 else ''}{perf_adj:.2f}")
+
+        # 当前环境胜率（仅展示，不重复调整）
+        regime_stats = (perf.get('by_regime') or {}).get(regime, {})
+        regime_used = regime_stats.get('used', 0)
+        regime_win_rate = None
+        if regime_used >= 3:
+            rw = regime_stats.get('wins', 0)
+            rl = regime_stats.get('losses', 0)
+            if rw + rl > 0:
+                regime_win_rate = rw / (rw + rl)
+                reason.append(f"当前环境胜率{regime_win_rate * 100:.0f}%（{regime_used}次）")
+
         # 应用调整
         adjusted_strength = max(0.0, min(1.0, base_strength + adjustment))
 
         return {
             'original_strength': base_strength,
             'adjusted_strength': round(adjusted_strength, 2),
-            'adjustment': adjustment,
+            'adjustment': round(adjustment, 2),
             'reason': reason,
             'regime': regime,
+            'regime_win_rate': regime_win_rate,
         }
 
     def _evaluate_conditions(self, conditions: List[Dict], logic: str,
@@ -387,6 +435,8 @@ class SkillMatcher:
                 status = 'not_triggered'
 
         signal = rule.get('signal', {})
+        perf = rule.get('performance') or {}
+        by_regime = perf.get('by_regime', {})
 
         detail = {
             'skill_id': rule['rule_id'],
@@ -399,6 +449,12 @@ class SkillMatcher:
             'applicable_regimes': rule.get('applicable_regimes', []),
             'win_rate_hint': rule.get('win_rate_hint', {}),
             'common_pitfalls': rule.get('common_pitfalls', [])[:2],
+            # 历史验证表现（供 LLM 参考 + 权重微调，不用于淘汰 Skill）
+            'performance': {
+                'used_count': perf.get('used_count', 0),
+                'win_rate': perf.get('win_rate'),
+                'by_regime': by_regime,
+            },
         }
 
         if status == 'near_triggered':
@@ -687,16 +743,28 @@ class SkillMatcher:
         if triggered:
             lines.append(f"\n### [✓ 触发] {len(triggered)} 条")
             for s in triggered:
-                lines.append(f"\n**{s['name']}** (置信度{s['signal_strength']})")
+                adj = s.get('regime_adjustment', {})
+                lines.append(f"\n**{s['name']}** (信号强度{s['signal_strength']}"
+                             f" → 环境调整后{adj.get('adjusted_strength', s['signal_strength'])})")
                 lines.append(f"  信号方向: {s['signal_direction']}")
                 lines.append(f"  核心思想: {s['core_idea'][:100]}")
                 for c in s.get('conditions', []):
                     if c.get('status') == 'triggered':
                         lines.append(f"  - {c.get('evidence', '')}")
-                # 添加胜率提示
+                # 教材胜率提示
                 wr = s.get('win_rate_hint', {})
                 if wr:
-                    lines.append(f"  历史胜率参考: {', '.join(f'{k}={v*100:.0f}%' for k, v in wr.items())}")
+                    lines.append(f"  教材胜率参考: {', '.join(f'{k}={v*100:.0f}%' for k, v in wr.items())}")
+                # 历史验证胜率（让 LLM 自行判断该 Skill 的可信度）
+                perf = s.get('performance', {})
+                if perf.get('win_rate') is not None:
+                    lines.append(
+                        f"  历史验证胜率: {perf['win_rate']*100:.0f}%"
+                        f"（{perf.get('used_count', 0)}次验证）")
+                if adj.get('regime_win_rate') is not None:
+                    lines.append(f"  当前环境胜率: {adj['regime_win_rate']*100:.0f}%")
+                for reason in adj.get('reason', []):
+                    lines.append(f"  环境适配: {reason}")
 
         # 准触发的 Skill
         near = match_result.get('near_triggered', [])

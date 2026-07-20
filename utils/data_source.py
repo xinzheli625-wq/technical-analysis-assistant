@@ -3,8 +3,9 @@
 统一分析、跟踪、验证三个阶段的数据获取逻辑，避免口径不一致。
 优先级：
 1. 本地 CSV（data/{symbol}.csv）
-2. akshare（A 股）
-3. yfinance（美股/全球）
+2. 当日缓存（data/cache/，同一交易日不重复下载）
+3. akshare（A 股）
+4. yfinance（美股/全球）
 
 所有方法统一返回标准化的 DataFrame：
     columns: [open, high, low, close, volume], index: date
@@ -12,16 +13,52 @@
 
 import logging
 import os
+from datetime import datetime
 from typing import Optional
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+CACHE_DIR = 'data/cache'
+
 
 class DataSourceError(Exception):
     """数据源异常"""
     pass
+
+
+def _cache_path(symbol: str, market: str) -> str:
+    """当日缓存路径（按交易日区分，隔天自动失效）"""
+    today = datetime.now().strftime('%Y%m%d')
+    safe = symbol.replace('.', '_').replace('/', '_')
+    return f"{CACHE_DIR}/{safe}_{market}_{today}.csv"
+
+
+def _read_cache(symbol: str, market: str, days: int) -> Optional[pd.DataFrame]:
+    """读取当日缓存（仅同一交易日有效）"""
+    path = _cache_path(symbol, market)
+    if not os.path.exists(path):
+        return None
+    try:
+        df = pd.read_csv(path, index_col=0, parse_dates=True)
+        required = ['open', 'high', 'low', 'close', 'volume']
+        if not all(c in df.columns for c in required) or df.empty:
+            return None
+        logger.info(f"使用当日缓存: {symbol}, {len(df)} 条")
+        return df.tail(days)
+    except Exception as e:
+        logger.warning(f"读取缓存失败 {path}: {e}")
+        return None
+
+
+def _write_cache(symbol: str, market: str, df: pd.DataFrame):
+    """写入当日缓存"""
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        df.to_csv(_cache_path(symbol, market))
+    except Exception as e:
+        logger.warning(f"写入缓存失败: {e}")
 
 
 def _local_csv_path(symbol: str) -> str:
@@ -216,18 +253,25 @@ def download_daily(symbol: str, days: int = 100, market: str = 'cn',
             logger.info(f"使用本地 CSV 数据: {symbol}, {len(df)} 条")
             return df
 
+    # 当日缓存：同一交易日不重复下载
+    df = _read_cache(symbol, market, days)
+    if df is not None and len(df) >= min(days, 60):
+        return df
+
     if market == 'cn':
         df = _download_akshare(symbol, days)
         if df is not None and not df.empty:
             logger.info(f"使用 akshare 数据: {symbol}, {len(df)} 条")
+            _write_cache(symbol, market, df)
             return df
 
     df = _download_yfinance(symbol, days)
     if df is not None and not df.empty:
         logger.info(f"使用 yfinance 数据: {symbol}, {len(df)} 条")
+        _write_cache(symbol, market, df)
         return df
 
-    raise DataSourceError(f"无法获取 {symbol} 的数据（已尝试本地 CSV / akshare / yfinance）")
+    raise DataSourceError(f"无法获取 {symbol} 的数据（已尝试本地 CSV / 当日缓存 / akshare / yfinance）")
 
 
 def download_range(symbol: str, start_date: str, end_date: str,

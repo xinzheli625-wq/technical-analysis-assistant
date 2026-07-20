@@ -486,20 +486,24 @@ mypy utils
 
 ## 贡献与改进
 
-已完成：核心模块回归测试（Skill 触发解析、交易流转、提取流程）、全仓库 ruff 清零。
+已完成：核心模块回归测试（Skill 触发解析、交易流转、提取流程、指标数学）、
+全仓库 ruff 清零、市场环境检测统一（`MarketRegimeDetector` 单一事实源 +
+`to_matcher_regime` 映射）、提取 prompt 指标白名单从 `alias_map` 自动生成、
+Skill 历史胜率透传给 LLM 并参与权重微调、数据源当日缓存（`data/cache/`）。
 
 当前已知改进方向：
 
 1. 将 `api.py` 拆分为更小职责的模块。
-2. 将 `skill_knowledge.py` 中的超长 prompt 拆成独立模板文件；
-   `_extract_core_framework` 目前是启发式行过滤，信息有损，可改为人工策划的框架摘要。
-3. 市场环境检测存在三处实现（`MarketRegimeDetector` / `SkillMatcher._detect_market_regime` /
-   `TradePlanner._detect_regime`），建议统一为单一事实源。
+2. 将 `skill_knowledge.py` 中的超长 prompt 拆成独立模板文件。
+3. 市场广度类 Skill（45 条已弃用）：akshare 的 legu 接口已失效、东财快照接口
+   在当前网络不可达，待有可用数据源后复活（ARMS/麦克莱伦等）。
 4. mypy 目前为建议性检查（动态 dict 结构存量噪音较多），逐步收紧类型。
 5. 引入 logging 替代 print。
 6. 飞书集成：当前基于 `lark-cli` subprocess，后续可迁移到 Lark OpenAPI 以获得更稳定的错误处理。
 7. 端到端集成测试（含真实数据源与 LLM 的 mock）。
 8. 可追溯性增强：分析时记录规则库版本哈希，保证历史分析可复现。
+9. 形态检测器参数（窗口、阈值）未调优，误检会连带误触发形态类 Skill，
+   后续可用标注数据评估 precision。
 
 ---
 

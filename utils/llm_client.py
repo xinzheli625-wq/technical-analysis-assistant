@@ -416,9 +416,9 @@ class DeepSeekClient:
         Returns:
             {"rules": [...], "summary": "..."}
         """
-        from utils.skill_knowledge import SEGMENT_EXTRACT_SYSTEM_PROMPT
+        from utils.skill_knowledge import build_segment_extract_prompt
 
-        system_prompt = SEGMENT_EXTRACT_SYSTEM_PROMPT
+        system_prompt = build_segment_extract_prompt()
 
         user_content = f"## 原文段落\n\n{segment_text}\n"
         if user_instruction:

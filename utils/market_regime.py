@@ -18,6 +18,32 @@ class MarketRegime:
     indicators: Dict[str, Any]  # 用于判断的关键指标值
 
 
+# 检测器标签 → SkillMatcher 权重调整标签的映射
+# （SkillMatcher/TradePlanner/AutoValidator 统一使用 MarketRegimeDetector 的输出，
+#   通过此函数转换为权重调整体系使用的细粒度标签）
+def to_matcher_regime(primary: str, secondary: str = '',
+                      extreme_deviation: bool = False) -> str:
+    """把 MarketRegimeDetector 的 (primary, secondary) 映射为
+    SkillMatcher 权重调整使用的环境标签。
+
+    标签体系：trending_up_late_extreme / trending_up_late /
+    trending_up_strong / trending_up / trending_down / ranging / volatile / mixed
+    """
+    if primary == 'trending_up':
+        if secondary == 'late':
+            return 'trending_up_late_extreme' if extreme_deviation else 'trending_up_late'
+        if secondary == 'mature':
+            return 'trending_up_strong'
+        return 'trending_up'
+    if primary == 'trending_down':
+        return 'trending_down'
+    if primary == 'ranging':
+        return 'ranging'
+    if primary == 'volatile':
+        return 'volatile'
+    return 'mixed'
+
+
 class MarketRegimeDetector:
     """市场状态检测器
 

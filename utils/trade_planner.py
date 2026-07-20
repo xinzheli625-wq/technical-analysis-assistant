@@ -25,7 +25,8 @@ class TradePlanner:
 
     def create_plan(self, analysis_result: Dict, features: Dict,
                     symbol: str = '', symbol_name: str = '',
-                    triggered_skills: List[Dict] = None) -> Dict:
+                    triggered_skills: List[Dict] = None,
+                    market_regime: Optional[str] = None) -> Dict:
         """基于分析结果生成完整交易计划
 
         Args:
@@ -33,9 +34,9 @@ class TradePlanner:
             features: FeatureExtractor输出的指标
             symbol: 股票代码
             symbol_name: 股票名称
-
-        Returns:
-            完整交易计划字典
+            triggered_skills: SkillMatcher 的触发结果
+            market_regime: 统一环境标签（MarketRegimeDetector 输出经
+                to_matcher_regime 映射）。不传则回退内置启发式。
         """
         p4 = analysis_result.get('phase4_conclusion', {})
         analysis_result.get('phase1_indicator_inventory', {})
@@ -84,8 +85,9 @@ class TradePlanner:
         else:
             skills_for_plan = self._extract_triggered_skills(analysis_result)
 
-        # 8. 检测市场环境
-        market_regime = self._detect_regime(features)
+        # 8. 检测市场环境（优先使用传入的统一标签，回退内置启发式）
+        if market_regime is None:
+            market_regime = self._detect_regime(features)
 
         # 9. 生成trade_id
         trade_id = self._generate_trade_id(symbol)

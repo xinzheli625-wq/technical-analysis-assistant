@@ -81,50 +81,79 @@ SEGMENT_EXTRACT_SYSTEM_PROMPT = """你是技术分析教材编辑。任务是从
 5. 如果原文没有提到常见误区，common_pitfalls 留空列表
 6. **trigger条件必须结构化**：每条方法论都必须提取触发条件。根据analysis_steps中的判断标准，转化为indicator+operator+value的格式。如"RSI>70" → {"indicator": "rsi_14", "operator": ">", "value": 70}
 7. **signal方向必须明确**：根据方法论的结论方向填写。看涨方法填bullish，看跌方法填bearish，中性/观望填neutral。strength根据原文信心度填写0.0-1.0
-8. 形态类方法（如头肩顶）的trigger可用price_vs_ma、pattern_detected等近似指标，或填{"indicator": "pattern", "operator": "=", "value": "head_and_shoulders"}
+8. 形态类方法（如头肩顶）的trigger用 {"indicator": "pattern", "operator": "=", "value": "形态名"}
 
-## 可用指标名称规范（必须严格使用以下名称）
-
-### 趋势指标
-trend: adx, adx_signal, sma20, sma50, sma200, price_vs_sma20_pct, price_vs_sma200_pct, sma20_vs_sma50, supertrend_direction, roc_12, ichimoku_price_vs_kijun
-
-### 动量指标
-momentum: rsi, rsi_signal, macd_line, macd_signal, macd_histogram, macd_trend, kdj_k, kdj_d, kdj_j, cci, williams_r, stochastic_k, stochastic_d, momentum, tsi, awesome_oscillator, ultimate_oscillator, ppo_value, stoch_rsi
-
-### 波动率指标
-volatility: atr_value, bollinger_percent_b, bollinger_bandwidth, bollinger_position, historical_volatility, ulcer_index
-
-### 量能指标
-volume: volume_ratio, volume_trend, obv_value, obv_trend, vwap, mfi, chaikin_oscillator, force_index
-
-### 背离检测（新增）
-divergence: divergence_count, divergence_bearish_count, divergence_bullish_count, divergence_primary_signal
-- divergence_primary_signal 值: 'bearish'/'bullish'/'none'
-
-### 趋势阶段（新增）
-trend_stage: trend_stage, adx_change_10d_pct, ma_deviation_20, ma_deviation_change_10d, price_acceleration, extreme_deviation
-- trend_stage 值: 'early'/'early_acceleration'/'middle'/'late'/'fading'/'ranging'
-- extreme_deviation 值: true/false
-
-### 波动率状态（新增）
-volatility_state: volatility_state, volatility_squeeze, volatility_expansion, squeeze_to_expansion_alert
-- volatility_state 值: 'squeeze'/'expansion'/'expanding'/'contracting'/'normal'
-- volatility_squeeze/volatility_expansion/squeeze_to_expansion_alert 值: true/false
-
-### 动量加速度（新增）
-momentum_accel: rsi_change_5d, macd_hist_acceleration, price_acceleration_state, momentum_direction
-- price_acceleration_state 值: 'accelerating'/'decelerating'/'mixed'
-- momentum_direction 值: 'strengthening'/'weakening'/'neutral'
-
-### 多时间框架（新增）
-multi_timeframe: mtf_alignment, mtf_short_turning, mtf_long_trend_intact
-- mtf_alignment 值: 'strongly_bullish'/'bullish'/'strongly_bearish'/'bearish'/'mixed'
-- mtf_long_trend_intact 值: true/false
-
-### 形态检测
-pattern: pattern_detected
-- 可用形态名: 'Double Bottom', 'Head and Shoulders', 'Ascending Triangle', 'Descending Triangle', 'Symmetrical Triangle', 'Cup and Handle', 'Rising Wedge', 'Falling Wedge', 'Flag', 'Pennant', 'Ascending Channel', 'Descending Channel', 'Rectangle', 'Rounded Top', 'Rounded Bottom', 'V-Reversal Bottom', 'V-Reversal Top', 'Island Reversal Top', 'Island Reversal Bottom'
 """
+
+# 形态类 trigger 说明（静态部分）
+_PATTERN_SPEC = """## 形态条件写法
+
+{"indicator": "pattern", "operator": "=", "value": "形态名"} 表示检测到该形态。
+可用形态名：'Double Bottom', 'Head and Shoulders', 'Ascending Triangle',
+'Descending Triangle', 'Symmetrical Triangle', 'Cup and Handle', 'Rising Wedge',
+'Falling Wedge', 'Flag', 'Pennant', 'Ascending Channel', 'Descending Channel',
+'Rectangle', 'Rounded Top', 'Rounded Bottom', 'V-Reversal Bottom', 'V-Reversal Top',
+'Island Reversal Top', 'Island Reversal Bottom'
+形态几何参数（颈线斜率、肩高、到顶点距离等）无法计算，不要作为 trigger 条件。
+"""
+
+_segment_extract_prompt_cache: Optional[str] = None
+
+
+def build_segment_extract_prompt() -> str:
+    """构建分段提取 system prompt（指标白名单从 SkillMatcher.alias_map 自动生成）
+
+    这是"提取时教给 LLM 的命名"与"匹配时可解析的名称"的单一事实源，
+    新增指标别名后 prompt 自动更新，不会再发生两套命名漂移的问题。
+    """
+    global _segment_extract_prompt_cache
+    if _segment_extract_prompt_cache is not None:
+        return _segment_extract_prompt_cache
+
+    from utils.skill_matcher import build_alias_map
+    aliases = build_alias_map()
+
+    # 按目标路径前缀分组
+    groups: Dict[str, list] = {}
+    for name, path in sorted(aliases.items()):
+        prefix = path.split('.')[0]
+        groups.setdefault(prefix, []).append(name)
+
+    group_titles = {
+        'raw': '原始价格',
+        'trend': '趋势指标',
+        'momentum': '动量指标',
+        'volatility': '波动率指标',
+        'volume': '量能指标',
+        'divergence': '背离检测',
+        'trend_stage': '趋势阶段',
+        'volatility_state': '波动率状态',
+        'momentum_accel': '动量加速度',
+        'multi_timeframe': '多时间框架',
+        'pattern': '形态统计',
+        'composite': '综合',
+    }
+
+    parts = ["## 可用指标名称规范（必须严格使用以下名称）\n"]
+    for prefix, names in groups.items():
+        title = group_titles.get(prefix, prefix)
+        parts.append(f"### {title}\n{', '.join(names)}\n")
+
+    parts.append("""### 字符串类指标的取值
+- trend_stage: 'early'/'early_acceleration'/'middle'/'late'/'fading'/'ranging'
+- volatility_state: 'squeeze'/'expansion'/'expanding'/'contracting'/'normal'
+- divergence_primary_signal: 'bullish'/'bearish'/'none'
+- mtf_alignment: 'strongly_bullish'/'bullish'/'bearish'/'strongly_bearish'/'mixed'
+- momentum_direction: 'strengthening'/'weakening'/'neutral'
+- trend / composite_mid_trend: 'up'/'down'/'range'
+- 布尔指标（extreme_deviation、volatility_squeeze、volatility_expansion、
+  squeeze_to_expansion_alert、mtf_short_turning、mtf_long_trend_intact）value 用 1 或 0
+""")
+
+    _segment_extract_prompt_cache = (
+        SEGMENT_EXTRACT_SYSTEM_PROMPT + '\n'.join(parts) + '\n' + _PATTERN_SPEC
+    )
+    return _segment_extract_prompt_cache
 
 
 # 每个分析场景需要的规则类别映射

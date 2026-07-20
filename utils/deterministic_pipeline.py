@@ -318,10 +318,29 @@ class DeterministicPipeline:
             self._save_trace(result)
             return result
 
-        # === Step 4: Skill匹配 + 环境适配 ===
-        print("[Step 4/8] Skill匹配 + 环境适配...")
+        # === Step 4: 市场环境检测（统一事实源）+ Skill匹配 ===
+        print("[Step 4/8] 市场环境检测 + Skill匹配...")
+
+        # 4.1 市场环境：MarketRegimeDetector 是全系统唯一检测入口
+        regime_obj = None
+        regime_primary = 'unknown'
+        regime_confidence = 0.0
+        matcher_regime = None
+        try:
+            from utils.market_regime import to_matcher_regime
+            regime_obj = self.regime_detector.detect(df)
+            regime_primary = regime_obj.primary
+            regime_confidence = regime_obj.confidence
+            extreme_dev = bool(
+                features.get('trend_stage', {}).get('extreme_deviation', False))
+            matcher_regime = to_matcher_regime(
+                regime_obj.primary, regime_obj.secondary, extreme_dev)
+        except Exception as e:
+            print(f"  [WARN] 环境检测失败，使用 matcher 内置启发式: {e}")
+
+        # 4.2 Skill匹配（传入统一环境标签，None 时 matcher 回退内置启发式）
         match_result, trace4 = self._run_step("skill_match", 4,
-            self.skill_matcher.match, features)
+            self.skill_matcher.match, features, matcher_regime)
         result.add_step(trace4)
 
         if match_result is None:
@@ -332,28 +351,18 @@ class DeterministicPipeline:
 
         # 提取市场环境
         market_regime = match_result.get('market_regime', 'unknown')
-        print(f"  市场环境: {market_regime}")
+        print(f"  市场环境: {market_regime} (detector: {regime_primary}, 置信度{regime_confidence})")
         print(f"  触发Skill: {match_result.get('summary', {}).get('triggered_count', 0)}条")
         print(f"  准触发Skill: {match_result.get('summary', {}).get('near_triggered_count', 0)}条")
 
         # === Step 5: LLM四阶段分析 ===
         print("[Step 5/8] LLM四阶段分析...")
-        # 使用MarketRegimeDetector获取真实confidence（避免硬编码）
-        regime_obj = None
-        regime_primary = market_regime
-        regime_confidence = 0.8
-        try:
-            regime_obj = self.regime_detector.detect(df)
-            regime_primary = regime_obj.primary
-            regime_confidence = regime_obj.confidence
-        except Exception:
-            pass  # 检测失败时用 matcher 的环境标签兜底
-
         regime_info = {
             'primary': regime_primary,
             'secondary': getattr(regime_obj, 'secondary', '') if regime_obj else '',
             'confidence': regime_confidence,
             'indicators': getattr(regime_obj, 'indicators', {}) if regime_obj else {},
+            'matcher_regime': market_regime,
         }
         analysis_input = {
             'symbol': symbol,
@@ -391,7 +400,7 @@ class DeterministicPipeline:
             trade_plan, trace6 = self._run_step("trade_plan", 6,
                 self.trade_planner.create_plan,
                 full_analysis, features, symbol, symbol,
-                match_result.get('triggered', []))
+                match_result.get('triggered', []), market_regime)
             result.add_step(trace6)
 
             if trade_plan and 'plan' in trade_plan:
