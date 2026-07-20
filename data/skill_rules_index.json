@@ -11,9 +11,8 @@
     "momentum": 1
   },
   "by_status": {
-    "active": 1164,
-    "deprecated": 45,
-    "pending": 19
+    "active": 1183,
+    "deprecated": 45
   },
-  "last_updated": "2026-07-20T20:09:28.848873"
+  "last_updated": "2026-07-20T20:18:50.303446"
 }
