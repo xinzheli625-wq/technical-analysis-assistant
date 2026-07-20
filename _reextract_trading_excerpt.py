@@ -11,7 +11,6 @@
 """
 
 import json
-import os
 
 from dotenv import load_dotenv
 
@@ -56,10 +55,11 @@ def make_segments(text: str, target: int = TARGET_SEG_CHARS):
 
 def main():
     import pandas as pd
-    from utils.llm_client import DeepSeekClient
-    from utils.skill_matcher import SkillMatcher
+
     from utils.feature_extractor import FeatureExtractor
+    from utils.llm_client import DeepSeekClient
     from utils.rule_index import RuleIndex
+    from utils.skill_matcher import SkillMatcher
 
     with open(CLEAN_TEXT, encoding='utf-8') as f:
         text = f.read()

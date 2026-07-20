@@ -214,7 +214,7 @@ def main():
             r['deprecated_reason'] = (
                 f"触发条件（{', '.join(sorted(set(bad)))}）无法改写为可解析指标，2026-07 审查弃用")
             failed.append(r['name'])
-            print(f"    -> 无法修复，已弃用")
+            print("    -> 无法修复，已弃用")
 
     # 写回规则库
     with open(RULES_FILE, 'w', encoding='utf-8') as f:
