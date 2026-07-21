@@ -71,7 +71,20 @@ def _safe_parse_json(text: str) -> Dict[str, Any]:
             except (json.JSONDecodeError, ValueError):
                 pass
 
-    # 尝试4：如果文本本身是一个JSON字符串（被引号包裹的JSON）
+    # 尝试4：转义中文语境的内嵌双引号后重新解析
+    # LLM 常在中文句子里直接写 ASCII 双引号（如 无强势"杯柄"中的杯体），
+    # 这会截断字符串导致 "Expecting ',' delimiter"。
+    # 规则：引号两侧都是 CJK 字符时，它是内容而非分隔符，转义之。
+    fixed_quotes = _escape_inner_cjk_quotes(text)
+    if fixed_quotes != text:
+        for candidate in [fixed_quotes, _fix_trailing_commas(fixed_quotes)]:
+            for strict in [True, False]:
+                try:
+                    return _ensure_dict(json.loads(candidate, strict=strict))
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+    # 尝试5：如果文本本身是一个JSON字符串（被引号包裹的JSON）
     try:
         if text.startswith('"') and text.endswith('"'):
             unquoted = json.loads(text)
@@ -82,6 +95,13 @@ def _safe_parse_json(text: str) -> Dict[str, Any]:
 
     # 都失败了，返回原始文本
     return {"raw_response": text, "parse_error": True}
+
+
+def _escape_inner_cjk_quotes(text: str) -> str:
+    """转义被 CJK 字符夹住的内嵌 ASCII 双引号（LLM 高频 JSON 错误）"""
+    import re
+    # 引号前后都是 CJK → 内容引号（如 势"杯柄"中 的两个引号）
+    return re.sub(r'(?<=[一-鿿])"(?=[一-鿿])', r'\\"', text)
 
 
 def _fix_trailing_commas(text: str) -> str:
@@ -155,12 +175,14 @@ class DeepSeekClient:
                 if content and content.strip():
                     return content.strip()
                 # 空响应，重试
-                print(f"  ⚠️ API返回空内容，第{attempt+1}次重试...")
+                from utils.console import safe_print
+                safe_print(f"  ⚠️ API返回空内容，第{attempt+1}次重试...")
                 import time
                 time.sleep(1 + attempt)
             except Exception as e:
                 last_error = e
-                print(f"  ⚠️ API调用失败({attempt+1}/3): {e}")
+                from utils.console import safe_print
+                safe_print(f"  ⚠️ API调用失败({attempt+1}/3): {e}")
                 import time
                 time.sleep(1 + attempt)
 

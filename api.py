@@ -1412,23 +1412,24 @@ function filter() {{
         attribution = result.get('attribution', {})
         lessons = result.get('lessons', [])
 
-        print(f"\n{'='*60}")
-        print(f"交易验证报告: {result.get('symbol', 'N/A')}")
-        print(f"{'='*60}")
-        print(f"实际收益: {outcome.get('pnl_pct', 'N/A')}%")
-        print(f"目标达成: {'✓' if outcome.get('target_reached') else '✗'}")
-        print(f"止损触发(收盘): {'✓' if outcome.get('stop_hit_close') else '✗'}")
-        print(f"方向正确: {'✓' if outcome.get('direction_correct') else '✗'}")
-        print(f"持有天数: {outcome.get('holding_days', 'N/A')}")
+        from utils.console import safe_print
+        safe_print(f"\n{'='*60}")
+        safe_print(f"交易验证报告: {result.get('symbol', 'N/A')}")
+        safe_print(f"{'='*60}")
+        safe_print(f"实际收益: {outcome.get('pnl_pct', 'N/A')}%")
+        safe_print(f"目标达成: {'✓' if outcome.get('target_reached') else '✗'}")
+        safe_print(f"止损触发(收盘): {'✓' if outcome.get('stop_hit_close') else '✗'}")
+        safe_print(f"方向正确: {'✓' if outcome.get('direction_correct') else '✗'}")
+        safe_print(f"持有天数: {outcome.get('holding_days', 'N/A')}")
 
         if attribution:
-            print("\nSkill归因:")
-            print(f"  ✓ 正确: {attribution.get('correct_count', 0)} 个")
+            safe_print("\nSkill归因:")
+            safe_print(f"  ✓ 正确: {attribution.get('correct_count', 0)} 个")
             for s in attribution.get('correct_skills', [])[:5]:
-                print(f"    - {s.get('name', 'Unknown')} ({s.get('direction', '')})")
-            print(f"  ✗ 错误: {attribution.get('wrong_count', 0)} 个")
+                safe_print(f"    - {s.get('name', 'Unknown')} ({s.get('direction', '')})")
+            safe_print(f"  ✗ 错误: {attribution.get('wrong_count', 0)} 个")
             for s in attribution.get('wrong_skills', [])[:5]:
-                print(f"    - {s.get('name', 'Unknown')} ({s.get('direction', '')})")
+                safe_print(f"    - {s.get('name', 'Unknown')} ({s.get('direction', '')})")
 
         if lessons:
             print("\n教训:")

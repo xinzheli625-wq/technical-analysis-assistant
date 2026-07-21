@@ -1,5 +1,6 @@
 """环境检测统一 / 胜率权重 / 数据缓存 / 契约自动化的回归测试（2026-07）"""
 
+import json
 import os
 
 import pandas as pd
@@ -165,3 +166,58 @@ class TestDataCache:
         result = ds.download_daily('CACHED_STOCK', days=60, market='us',
                                    prefer_local=False)
         assert len(result) == 60
+
+
+class TestSafePrint:
+    """GBK 控制台打印 Unicode 符号不崩溃（Windows 回归）"""
+
+    def test_safe_print_with_unicode_symbols(self, capsys, monkeypatch):
+        import io
+
+        from utils.console import safe_print
+        # 模拟 GBK stdout
+        gbk_out = io.TextIOWrapper(io.BytesIO(), encoding='gbk')
+        monkeypatch.setattr('sys.stdout', gbk_out)
+        safe_print("  ⚠ 警告 ✓ ✗ ⊘ ✅")
+        gbk_out.flush()
+        assert gbk_out.buffer.getvalue()  # 有输出且不抛异常
+
+
+class TestJsonRepair:
+    """LLM 输出里中文语境内嵌双引号的 JSON 修复（2026-07 真实故障）"""
+
+    def test_inner_cjk_quotes_escaped(self):
+        from utils.llm_client import _safe_parse_json
+        broken = '{"为什么不适用": "无强势"杯柄"中的杯体", "a": 1}'
+        parsed = _safe_parse_json(broken)
+        assert parsed.get('parse_error') is not True
+        assert '杯柄' in parsed['为什么不适用']
+
+    def test_structural_quotes_untouched(self):
+        from utils.llm_client import _safe_parse_json
+        good = '{"方向": "看多", "置信度": 80}'
+        parsed = _safe_parse_json(good)
+        assert parsed['方向'] == '看多'
+
+
+class TestSnapshotJsonSafe:
+    """快照保存时 numpy 标量不得让 json.dump 崩溃"""
+
+    def test_numpy_scalars_serialized(self, tmp_path, monkeypatch):
+        import numpy as np
+
+        from utils.tracking_module import TrackingModule, _json_safe
+        tm = TrackingModule()
+        monkeypatch.setattr(tm, 'snapshots_dir', str(tmp_path))
+        result = {
+            'full_analysis': {'phase4_conclusion': {'direction': 'BEARISH', 'confidence': 70}},
+            'indicator_features': {},
+            'skill_match_result': {'triggered': []},
+            'market_regime': {'primary': 'volatile',
+                              'indicators': {'ma_aligned_down': np.bool_(True),
+                                             'adx': np.float64(15.2)}},
+        }
+        tm.save_analysis_snapshot('TEST', result)
+        saved = json.load(open(tmp_path / 'TEST.json', encoding='utf-8'))
+        assert saved['regime']['indicators']['ma_aligned_down'] is True
+        assert _json_safe(np.int64(3)) == 3

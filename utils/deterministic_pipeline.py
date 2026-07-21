@@ -439,7 +439,8 @@ class DeterministicPipeline:
             # 检查R:R是否合格（D级不执行）
             rr_grade = trade_plan.get('plan', {}).get('risk_metrics', {}).get('grade', 'D')
             if rr_grade == 'D':
-                print("  ⚠️ R/R Grade D，跳过开仓")
+                from utils.console import safe_print
+                safe_print("  ⚠️ R/R Grade D，跳过开仓")
                 trace8 = StepTrace(
                     step_name="simulation_open",
                     step_number=8,
@@ -456,7 +457,8 @@ class DeterministicPipeline:
                     # 保存交易记录（状态置为 open，否则自动验证永远找不到待验证交易）
                     trade_plan['status'] = 'open'
                     self.trade_planner.save_plan(trade_plan)
-                    print(f"  ✅ 模拟持仓已建立: {position.get('shares', 0)}股")
+                    from utils.console import safe_print
+                    safe_print(f"  ✅ 模拟持仓已建立: {position.get('shares', 0)}股")
                 else:
                     err = position.get('error', 'unknown') if isinstance(position, dict) else 'open_position returned None'
                     result.errors.append(f"模拟开仓失败: {err}")
@@ -687,29 +689,30 @@ class DeterministicPipeline:
 
     def _print_summary(self, result: PipelineResult):
         """打印执行摘要"""
-        print(f"\n{'='*60}")
-        print(f"流水线执行完成: {result.pipeline_name}")
-        print(f"{'='*60}")
+        from utils.console import safe_print
+        safe_print(f"\n{'='*60}")
+        safe_print(f"流水线执行完成: {result.pipeline_name}")
+        safe_print(f"{'='*60}")
 
         success_count = sum(1 for s in result.trace if s.status == StepStatus.SUCCESS)
         failed_count = sum(1 for s in result.trace if s.status == StepStatus.FAILED)
         skipped_count = sum(1 for s in result.trace if s.status == StepStatus.SKIPPED)
 
-        print(f"总步骤: {len(result.trace)} | 成功: {success_count} | 失败: {failed_count} | 跳过: {skipped_count}")
+        safe_print(f"总步骤: {len(result.trace)} | 成功: {success_count} | 失败: {failed_count} | 跳过: {skipped_count}")
 
         if result.errors:
-            print("\n错误:")
+            safe_print("\n错误:")
             for e in result.errors:
-                print(f"  ✗ {e}")
+                safe_print(f"  ✗ {e}")
 
         if result.warnings:
-            print("\n警告:")
+            safe_print("\n警告:")
             for w in result.warnings:
-                print(f"  ⚠ {w}")
+                safe_print(f"  ⚠ {w}")
 
-        print("\n步骤详情:")
+        safe_print("\n步骤详情:")
         for s in result.trace:
             icon = "✓" if s.status == StepStatus.SUCCESS else "✗" if s.status == StepStatus.FAILED else "⊘"
-            print(f"  {icon} Step {s.step_number}: {s.step_name} ({s.duration_ms:.0f}ms) {s.output_summary}")
+            safe_print(f"  {icon} Step {s.step_number}: {s.step_name} ({s.duration_ms:.0f}ms) {s.output_summary}")
 
-        print(f"{'='*60}")
+        safe_print(f"{'='*60}")

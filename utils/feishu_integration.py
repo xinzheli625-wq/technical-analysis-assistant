@@ -204,6 +204,37 @@ class FeishuIntegration:
         """清理拼入 shell 命令的参数，防止引号破坏命令解析"""
         return str(value).replace(chr(34), chr(32)).replace(chr(13), chr(32)).replace(chr(10), chr(32))
 
+    def _create_doc(self, title: str, markdown: str) -> Dict[str, Any]:
+        """创建文档（folder_token 失效时自动重建文件夹重试一次）
+
+        缓存的 folder_token 对应文件夹可能已被用户在飞书删除，
+        API 报 "folder not found"(1770039)，此时清空缓存重建再试。
+        """
+        for attempt in range(2):
+            temp_path = self._write_temp_markdown(markdown)
+            try:
+                result = self._run(
+                    f'lark-cli docs +create --title "{title}" '
+                    f'--folder-token {self.folder_token} '
+                    f'--markdown @{temp_path}'
+                )
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+
+            if result.get('ok'):
+                return result
+            error_text = str(result.get('error', result))
+            if 'folder not found' in error_text and attempt == 0:
+                print('[WARN] 飞书文件夹失效，重建后重试...')
+                self.folder_token = None
+                self.stock_docs = {}
+                self._save_cache()  # 清掉缓存里的失效 token，否则 _ensure_folder 会读回来
+                self._ensure_folder()
+                continue
+            return result
+        return result
+
     def create_stock_doc(self, symbol: str, content: str = "") -> str:
         """为股票创建分析文档，返回 doc_token"""
         if symbol in self.stock_docs:
@@ -212,17 +243,7 @@ class FeishuIntegration:
         title = self._sanitize_arg(f"{symbol} 技术分析")
         markdown = content or f"# {symbol} 技术分析\n\n> 创建于 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n---\n"
 
-        # 写入临时文件，通过 @file 方式传入
-        temp_path = self._write_temp_markdown(markdown)
-        try:
-            result = self._run(
-                f'lark-cli docs +create --title "{title}" '
-                f'--folder-token {self.folder_token} '
-                f'--markdown @{temp_path}'
-            )
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+        result = self._create_doc(title, markdown)
 
         if not result.get('ok'):
             raise RuntimeError(f'创建文档失败: {result.get("error", "unknown")}')

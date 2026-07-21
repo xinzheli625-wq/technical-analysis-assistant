@@ -16,6 +16,27 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 
+def _json_safe(obj):
+    """递归把 numpy 标量转成 Python 原生类型，避免 json.dump 崩溃
+
+    market_regime 等特征字典里的布尔/数值常是 np.bool_/np.integer，
+    直接 json.dump 会抛 "Object of type bool_ is not JSON serializable"。
+    """
+    try:
+        import numpy as np
+        np_scalars = (np.bool_, np.integer, np.floating)
+    except ImportError:
+        np_scalars = ()
+
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if np_scalars and isinstance(obj, np_scalars):
+        return obj.item()
+    return obj
+
+
 class TrackingModule:
     """股票跟踪模块"""
 
@@ -104,7 +125,7 @@ class TrackingModule:
 
         path = os.path.join(self.snapshots_dir, f'{symbol}.json')
         with open(path, 'w', encoding='utf-8') as f:
-            json.dump(snapshot, f, ensure_ascii=False, indent=2)
+            json.dump(_json_safe(snapshot), f, ensure_ascii=False, indent=2)
 
         return snapshot_id
 

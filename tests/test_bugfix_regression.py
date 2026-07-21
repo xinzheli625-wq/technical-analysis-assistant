@@ -118,11 +118,13 @@ class TestSkillTriggerResolution:
         """indicator='pattern' 必须按形态名匹配，而不是当数值指标解析"""
         from utils.skill_matcher import SkillMatcher
         sm = SkillMatcher()
-        detected = features['pattern']['patterns_detected']
-        assert detected, '测试数据应至少检测到一个形态'
-        name = detected[0]['name']
+        # 注入合成形态：真实行情数据不保证任何时刻都有形态检出，
+        # 本测试验证的是匹配逻辑而非检测器
+        features['pattern']['patterns_detected'] = [
+            {'name': 'Double Bottom', 'confidence': 0.8, 'direction': 'bullish'},
+        ]
 
-        result = sm._evaluate_pattern_condition(features, '=', name)
+        result = sm._evaluate_pattern_condition(features, '=', 'Double Bottom')
         assert result['status'] == 'triggered'
 
         result = sm._evaluate_pattern_condition(features, '=', 'Nonexistent Pattern XYZ')
@@ -135,11 +137,13 @@ class TestSkillTriggerResolution:
         """完整条件评估：pattern 条件不再返回 unknown"""
         from utils.skill_matcher import SkillMatcher
         sm = SkillMatcher()
-        name = features['pattern']['patterns_detected'][0]['name']
+        features['pattern']['patterns_detected'] = [
+            {'name': 'Double Bottom', 'confidence': 0.8, 'direction': 'bullish'},
+        ]
         rule = {
             'rule_id': 'test', 'name': 'test',
             'trigger': {'conditions': [
-                {'indicator': 'pattern', 'operator': '=', 'value': name}],
+                {'indicator': 'pattern', 'operator': '=', 'value': 'Double Bottom'}],
                 'logic': 'AND'},
             'signal': {'direction': 'bullish', 'strength': 0.6},
         }
