@@ -33,7 +33,14 @@ class FeishuIntegration:
     # ========== 底层命令封装 ==========
 
     def _run(self, cmd: str) -> Dict[str, Any]:
-        """运行 lark-cli 命令，返回JSON结果"""
+        """运行 lark-cli 命令，返回JSON结果
+
+        环境变量 FEISHU_AS=user 时统一追加 --as user（用户身份调用，
+        用于向个人文件夹写入等 bot 无权限的场景；需先 lark-cli auth login）。
+        """
+        feishu_as = os.environ.get('FEISHU_AS', '').strip()
+        if feishu_as and ' --as ' not in cmd:
+            cmd += f' --as {feishu_as}'
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True,
                                encoding='utf-8', errors='replace')
 
@@ -107,12 +114,26 @@ class FeishuIntegration:
     def _ensure_folder(self):
         """确保文件夹存在，获取 folder_token
 
-        策略：
-        1. 先检查本地缓存（复用已有文件夹）
-        2. 尝试创建新文件夹
-        3. 如果创建失败（已存在），从错误中读取或提示用户
+        策略（优先级从高到低）：
+        1. 环境变量 FEISHU_FOLDER_TOKEN（.env 配置，指定固定目标文件夹）
+        2. 本地缓存（复用已有文件夹）
+        3. 创建新文件夹
         """
         cache_file = 'data/feishu_cache.json'
+
+        # 步骤0：env 指定的固定文件夹（账户相关配置不入库，故走 .env）
+        env_token = os.environ.get('FEISHU_FOLDER_TOKEN', '').strip()
+        if env_token:
+            self.folder_token = env_token
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        cache = json.load(f)
+                    self.records_doc_token = cache.get('records_doc_token')
+                    self.stock_docs = cache.get('stock_docs', {})
+                except (json.JSONDecodeError, IOError):
+                    pass
+            return
 
         # 步骤1：优先从缓存读取（复用现有文件夹）
         if os.path.exists(cache_file):
@@ -225,7 +246,10 @@ class FeishuIntegration:
             if result.get('ok'):
                 return result
             error_text = str(result.get('error', result))
-            if 'folder not found' in error_text and attempt == 0:
+            # env 指定固定文件夹时重建无意义（_ensure_folder 会恢复同一 token），
+            # folder not found / no folder permission 都应直接报错让用户处理授权
+            env_managed = bool(os.environ.get('FEISHU_FOLDER_TOKEN', '').strip())
+            if 'folder not found' in error_text and attempt == 0 and not env_managed:
                 print('[WARN] 飞书文件夹失效，重建后重试...')
                 self.folder_token = None
                 self.stock_docs = {}

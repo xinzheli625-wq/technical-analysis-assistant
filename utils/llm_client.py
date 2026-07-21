@@ -9,6 +9,7 @@
 
 import json
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
@@ -156,9 +157,39 @@ def _extract_json_object(text: str) -> Optional[str]:
     return best
 
 
+def _log_token_usage(resp, tag: str = ''):
+    """把每次 API 调用的 token 用量落盘到 data/token_usage.jsonl（可追溯）
+
+    DeepSeek 返回的 usage 含 prompt_cache_hit/miss_tokens，
+    推理模型还有 completion_tokens_details.reasoning_tokens，
+    这些是精确核算单次分析成本的依据。
+    """
+    usage = getattr(resp, 'usage', None)
+    if usage is None:
+        return
+    try:
+        record = {
+            'ts': datetime.now().isoformat(timespec='seconds'),
+            'model': getattr(resp, 'model', ''),
+            'tag': tag,
+            'prompt_tokens': getattr(usage, 'prompt_tokens', None),
+            'completion_tokens': getattr(usage, 'completion_tokens', None),
+            'total_tokens': getattr(usage, 'total_tokens', None),
+            'cache_hit_tokens': getattr(usage, 'prompt_cache_hit_tokens', None),
+            'cache_miss_tokens': getattr(usage, 'prompt_cache_miss_tokens', None),
+        }
+        details = getattr(usage, 'completion_tokens_details', None)
+        if details is not None:
+            record['reasoning_tokens'] = getattr(details, 'reasoning_tokens', None)
+        os.makedirs('data', exist_ok=True)
+        with open('data/token_usage.jsonl', 'a', encoding='utf-8') as f:
+            f.write(json.dumps(record, ensure_ascii=False) + '\n')
+    except Exception:
+        pass  # 计量失败不影响主流程
+
+
 class DeepSeekClient:
     """DeepSeek 官方大模型客户端"""
-
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY")
         if not self.api_key:
@@ -172,7 +203,7 @@ class DeepSeekClient:
         self.model = MODEL_DEFAULT
 
     def _call(self, messages: List[Dict], temperature: float = 0.2,
-              max_tokens: Optional[int] = None) -> str:
+              max_tokens: Optional[int] = None, tag: str = '') -> str:
         kwargs = {"model": self.model, "messages": messages, "temperature": temperature}
         if max_tokens:
             kwargs["max_tokens"] = max_tokens
@@ -184,6 +215,7 @@ class DeepSeekClient:
                 resp = self.client.chat.completions.create(**kwargs)
                 content = resp.choices[0].message.content
                 if content and content.strip():
+                    _log_token_usage(resp, tag)
                     return content.strip()
                 # 空响应，重试
                 from utils.console import safe_print
@@ -404,7 +436,7 @@ class DeepSeekClient:
             {"role": "user", "content": user_content}
         ]
 
-        raw = self._call(messages, temperature=0.2)
+        raw = self._call(messages, temperature=0.2, tag='analyze_full')
         return _safe_parse_json(raw)
 
     def generate_report(self, all_results: Dict[str, Any]) -> str:

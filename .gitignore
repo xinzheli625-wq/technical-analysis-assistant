@@ -68,3 +68,4 @@ logs/
 .DS_Store
 Thumbs.db
 data/cache/
+data/token_usage.jsonl
