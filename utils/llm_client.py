@@ -71,13 +71,12 @@ def _safe_parse_json(text: str) -> Dict[str, Any]:
             except (json.JSONDecodeError, ValueError):
                 pass
 
-    # 尝试4：转义中文语境的内嵌双引号后重新解析
-    # LLM 常在中文句子里直接写 ASCII 双引号（如 无强势"杯柄"中的杯体），
-    # 这会截断字符串导致 "Expecting ',' delimiter"。
-    # 规则：引号两侧都是 CJK 字符时，它是内容而非分隔符，转义之。
-    fixed_quotes = _escape_inner_cjk_quotes(text)
-    if fixed_quotes != text:
-        for candidate in [fixed_quotes, _fix_trailing_commas(fixed_quotes)]:
+    # 尝试4：修复 LLM 高频 JSON 语法错误后重新解析
+    # a) 中文句子里直接写 ASCII 双引号（如 无强势"杯柄"中的杯体）→ 截断字符串
+    # b) 裸数字后跟括号注释（如 "当前值": 13.38 (占股价10.85%),）→ 非法值
+    repaired = _repair_common_llm_json_errors(text)
+    if repaired != text:
+        for candidate in [repaired, _fix_trailing_commas(repaired)]:
             for strict in [True, False]:
                 try:
                     return _ensure_dict(json.loads(candidate, strict=strict))
@@ -102,6 +101,18 @@ def _escape_inner_cjk_quotes(text: str) -> str:
     import re
     # 引号前后都是 CJK → 内容引号（如 势"杯柄"中 的两个引号）
     return re.sub(r'(?<=[一-鿿])"(?=[一-鿿])', r'\\"', text)
+
+
+def _repair_common_llm_json_errors(text: str) -> str:
+    """组合修复 LLM 输出的高频 JSON 语法错误"""
+    import re
+    # b) 裸数字 + 括号注释 → 整体加引号变成字符串
+    #    "当前值": 13.38 (占股价10.85%),  →  "当前值": "13.38 (占股价10.85%)",
+    text = re.sub(r'(:\s*)(-?\d+(?:\.\d+)?)(\s*\([^)]*\))(\s*[,}\]])',
+                  r'\1"\2\3"\4', text)
+    # a) CJK 夹住的内嵌引号 → 转义
+    text = _escape_inner_cjk_quotes(text)
+    return text
 
 
 def _fix_trailing_commas(text: str) -> str:

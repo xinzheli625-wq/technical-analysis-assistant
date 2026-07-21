@@ -4,7 +4,7 @@
 优先级：
 1. 本地 CSV（data/{symbol}.csv）
 2. 当日缓存（data/cache/，同一交易日不重复下载）
-3. akshare（A 股）
+3. akshare（A 股：东财前复权 → 新浪前复权 → 腾讯不复权兜底并检测除权断崖）
 4. yfinance（美股/全球）
 
 所有方法统一返回标准化的 DataFrame：
@@ -86,6 +86,9 @@ def _load_local_csv(symbol: str, days: Optional[int] = None) -> Optional[pd.Data
             '成交量': 'volume', '成交额': 'volume', 'volume': 'volume', 'amount': 'volume',
         }
         df = df.rename(columns={k: v for k, v in column_mapping.items() if k in df.columns})
+        # sina 等来源同时带 volume 和 amount 两列，rename 后会产生重复列名，
+        # 导致 df['volume'] 返回 DataFrame 而非 Series（下游 pd.to_numeric 报错）
+        df = df.loc[:, ~df.columns.duplicated()]
 
         required = ['date', 'open', 'high', 'low', 'close', 'volume']
         missing = [c for c in required if c not in df.columns]
@@ -139,8 +142,50 @@ def _standardize_akshare_hist(df: pd.DataFrame, days: Optional[int] = None) -> O
     return df.tail(days) if days else df
 
 
+def _detect_exright_gaps(df: pd.DataFrame, threshold: float = 0.20) -> list:
+    """检测不复权数据里的除权断崖（相邻日涨跌幅超过涨跌停物理上限）
+
+    A股主板 ±10%、创业板/科创板 ±20%，相邻日跳空超过 threshold 基本只可能
+    是送转除权造成的机械下跌/上涨。返回异常日期列表（用于告警）。
+    """
+    chg = df['close'].pct_change().abs()
+    return [str(dt.date()) for dt in chg[chg > threshold].index]
+
+
+def _download_sina(symbol: str, days: int) -> Optional[pd.DataFrame]:
+    """通过 akshare 新浪接口下载 A 股前复权数据（成交量单位为股）"""
+    try:
+        import akshare as ak
+    except ImportError:
+        return None
+
+    code = symbol.split('.')[0]
+    prefix = 'sh' if symbol.endswith('.SH') else 'sz' if symbol.endswith('.SZ') else _cn_prefix(code)
+    try:
+        df = ak.stock_zh_a_daily(symbol=f'{prefix}{code}', adjust='qfq')
+        if df is None or len(df) == 0:
+            return None
+
+        df = df.rename(columns={'date': 'date'})
+        required = ['date', 'open', 'high', 'low', 'close', 'volume']
+        if not all(c in df.columns for c in required):
+            logger.warning(f"sina 返回列不完整: {list(df.columns)}")
+            return None
+
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        df = df.dropna(subset=['date'])
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        df = df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
+        df = df.sort_values('date').set_index('date')
+        return df.tail(days) if days else df
+    except Exception as e:
+        logger.warning(f"akshare(sina) 下载 {symbol} 失败: {e}")
+        return None
+
+
 def _download_akshare(symbol: str, days: int) -> Optional[pd.DataFrame]:
-    """通过 akshare 下载 A 股数据"""
+    """通过 akshare 下载 A 股数据（前复权优先）"""
     try:
         import akshare as ak
     except ImportError:
@@ -149,7 +194,7 @@ def _download_akshare(symbol: str, days: int) -> Optional[pd.DataFrame]:
 
     code = symbol.split('.')[0]
 
-    # 优先东方财富接口（stock_zh_a_hist）：包含真实成交量（股），列名规范
+    # 优先东方财富接口（stock_zh_a_hist）：前复权 + 真实成交量（股），列名规范
     try:
         df = ak.stock_zh_a_hist(symbol=code, period='daily', adjust='qfq')
         if df is not None and len(df) > 0:
@@ -157,8 +202,14 @@ def _download_akshare(symbol: str, days: int) -> Optional[pd.DataFrame]:
     except Exception as e:
         logger.warning(f"akshare(eastmoney) 下载 {symbol} 失败: {e}")
 
-    # 回退腾讯接口（stock_zh_a_hist_tx）：注意其 amount 列为成交额而非成交量，
-    # 仅在东财接口不可用时兜底，量能指标口径可能与其他来源不一致
+    # 次选新浪接口（stock_zh_a_daily）：前复权，成交量为股
+    df = _download_sina(symbol, days)
+    if df is not None and not df.empty:
+        return df
+
+    # 最后回退腾讯接口（stock_zh_a_hist_tx）：**不复权**且 amount 为成交额，
+    # 跨除权日的长窗口指标（SMA50+、52周高低点、形态检测）会被污染，
+    # 检测到除权断崖时必须告警
     try:
         prefix = 'sh' if symbol.endswith('.SH') else 'sz' if symbol.endswith('.SZ') else _cn_prefix(code)
         df = ak.stock_zh_a_hist_tx(symbol=f'{prefix}{code}')
@@ -179,7 +230,15 @@ def _download_akshare(symbol: str, days: int) -> Optional[pd.DataFrame]:
             df[col] = pd.to_numeric(df[col], errors='coerce')
         df = df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
         df = df.sort_values('date').set_index('date')
-        return df.tail(days)
+        df = df.tail(days)
+
+        gaps = _detect_exright_gaps(df)
+        if gaps:
+            logger.warning(
+                f"{symbol} 使用不复权腾讯数据且检测到疑似除权断崖: {gaps}；"
+                f"跨除权日的长周期指标与涨跌幅统计不可靠，建议改用前复权数据源重下"
+            )
+        return df
     except Exception as e:
         logger.warning(f"akshare 下载 {symbol} 失败: {e}")
         return None

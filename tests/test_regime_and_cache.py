@@ -221,3 +221,39 @@ class TestSnapshotJsonSafe:
         saved = json.load(open(tmp_path / 'TEST.json', encoding='utf-8'))
         assert saved['regime']['indicators']['ma_aligned_down'] is True
         assert _json_safe(np.int64(3)) == 3
+
+
+class TestExrightGapDetection:
+    """不复权数据的除权断崖检测（2026-07 新易盛 10转4 真实故障）"""
+
+    def test_split_gap_detected(self):
+        import numpy as np
+
+        from utils.data_source import _detect_exright_gaps
+        # 10转4除权：价格机械除以1.4 → -28.6% 跳空
+        closes = np.concatenate([np.full(10, 700.0), np.full(10, 500.0)])
+        df = pd.DataFrame({
+            'open': closes, 'high': closes, 'low': closes,
+            'close': closes, 'volume': 1000.0,
+        }, index=pd.date_range('2026-06-01', periods=20))
+        gaps = _detect_exright_gaps(df)
+        assert gaps == ['2026-06-11']
+
+    def test_normal_volatility_no_false_positive(self):
+        import numpy as np
+
+        from utils.data_source import _detect_exright_gaps
+        # ±8% 正常波动不触发
+        closes = 100 * np.cumprod(1 + np.sin(np.arange(30)) * 0.08)
+        df = pd.DataFrame({
+            'open': closes, 'high': closes, 'low': closes,
+            'close': closes, 'volume': 1000.0,
+        }, index=pd.date_range('2026-06-01', periods=30))
+        assert _detect_exright_gaps(df) == []
+
+    def test_bare_numeric_with_comment_quoted(self):
+        from utils.llm_client import _safe_parse_json
+        broken = '{"当前值": 13.38 (占股价10.85%), "状态": "极高"}'
+        parsed = _safe_parse_json(broken)
+        assert parsed.get('parse_error') is not True
+        assert '13.38' in parsed['当前值']
